@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gattile – prototipo</title>
+  <meta name="description" content="Prototipo di un puzzle logico a tema gatti: un gatto per riga, colonna e regione, mai vicini.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Gatto originale disegnato per il prototipo: musetto che dorme -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="cat" viewBox="0 0 100 100">
+      <path class="cat-body" d="M17 44 L20 10 L41 27 Q50 25 59 27 L80 10 L83 44 Q92 62 81 77 Q68 92 50 92 Q32 92 19 77 Q8 62 17 44 Z"/>
+      <path class="cat-ear" d="M24 21 L26 36 L36 29 Z"/>
+      <path class="cat-ear" d="M76 21 L74 36 L64 29 Z"/>
+      <path class="cat-cheek" d="M24 66 a7 5 0 1 0 14 0 a7 5 0 1 0 -14 0 M62 66 a7 5 0 1 0 14 0 a7 5 0 1 0 -14 0"/>
+      <path class="cat-line" d="M30 55 Q37 61 44 55 M56 55 Q63 61 70 55"/>
+      <path class="cat-nose" d="M46 64 L54 64 L50 69 Z"/>
+      <path class="cat-line" d="M50 69 Q47 75 42 72 M50 69 Q53 75 58 72"/>
+      <path class="cat-line thin" d="M8 62 L28 64 M9 71 L28 68 M92 62 L72 64 M91 71 L72 68"/>
+    </symbol>
+  </svg>
+
+  <header class="top">
+    <h1><svg class="logo"><use href="#cat"/></svg> Gattile <span class="tag">prototipo</span></h1>
+    <p class="subtitle">Un gatto per riga, colonna e regione. I gatti non si toccano, nemmeno in diagonale.</p>
+  </header>
+
+  <main>
+    <section class="panel newgame" aria-label="Nuova partita">
+      <label>Griglia
+        <select id="size">
+          <option value="5">5×5</option><option value="6">6×6</option><option value="7">7×7</option>
+          <option value="8" selected>8×8</option><option value="9">9×9</option><option value="10">10×10</option>
+        </select>
+      </label>
+      <label>Difficoltà
+        <select id="difficulty">
+          <option value="">Qualsiasi</option>
+          <option value="facile">Facile</option>
+          <option value="medio">Medio</option>
+          <option value="difficile">Difficile</option>
+          <option value="esperto">Esperto</option>
+          <option value="diabolico">Diabolico</option>
+        </select>
+      </label>
+      <button id="btn-new" class="primary">Nuovo livello</button>
+      <button id="btn-daily">Sfida del giorno</button>
+    </section>
+
+    <section class="status" aria-live="polite">
+      <span id="badge" class="badge">—</span>
+      <span id="cats-count">0/0 🐾</span>
+      <span id="timer">0:00</span>
+    </section>
+
+    <div class="board-wrap">
+      <div id="board" class="board" role="grid" aria-label="Griglia di gioco"></div>
+      <div id="loading" class="loading" hidden>Genero il livello…</div>
+    </div>
+
+    <section class="actions">
+      <button id="btn-undo" title="Annulla">↶ Annulla</button>
+      <button id="btn-redo" title="Ripeti">↷ Ripeti</button>
+      <button id="btn-hint" class="primary">💡 Suggerimento</button>
+      <button id="btn-reset" title="Ricomincia">⟲ Ricomincia</button>
+    </section>
+
+    <section id="hint" class="panel hint" hidden>
+      <h2 id="hint-title"></h2>
+      <p id="hint-text"></p>
+      <div class="row">
+        <button id="hint-apply" class="primary">Applica</button>
+        <button id="hint-close">Chiudi</button>
+      </div>
+    </section>
+
+    <p class="help">Tocca una casella: <b>vuota → X → gatto</b>. Trascina dopo aver messo una X per segnarne tante.</p>
+
+    <details class="panel" id="settings">
+      <summary>Impostazioni</summary>
+      <label class="check"><input type="checkbox" id="opt-autox"> Metti X automatiche intorno a ogni gatto</label>
+      <label class="check"><input type="checkbox" id="opt-conflicts"> Evidenzia i conflitti</label>
+      <div class="row seed-row">
+        <label>Seme <input id="seed-input" inputmode="numeric" placeholder="es. 12345"></label>
+        <button id="btn-seed">Gioca questo seme</button>
+      </div>
+    </details>
+
+    <details class="panel" id="analysis">
+      <summary>Analisi del livello (engine)</summary>
+      <div id="analysis-body"></div>
+      <label class="check"><input type="checkbox" id="opt-replay"> Mostra sulla griglia il percorso del risolutore</label>
+      <div id="replay" hidden>
+        <div class="row">
+          <button id="replay-prev">◀</button>
+          <input type="range" id="replay-slider" min="0" value="0">
+          <button id="replay-next">▶</button>
+        </div>
+        <p id="replay-text" class="replay-text"></p>
+      </div>
+    </details>
+  </main>
+
+  <div id="win" class="overlay" hidden>
+    <div class="dialog">
+      <svg class="win-cat"><use href="#cat"/></svg>
+      <h2>Tutti i gatti sistemati!</h2>
+      <p id="win-text"></p>
+      <div class="row">
+        <button id="win-next" class="primary">Nuovo livello</button>
+        <button id="win-close">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
