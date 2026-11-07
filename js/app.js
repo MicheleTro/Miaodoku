@@ -28,7 +28,12 @@ const S = {
 
 // ------------------------------------------------------------ generazione (worker)
 
-const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+// Nella versione a file singolo (build-artifact) il worker viene sostituito da uno creato da blob.
+function createWorker() {
+  return new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+}
+
+const worker = createWorker();
 const pending = new Map();
 let reqId = 0;
 worker.onmessage = (e) => {
@@ -45,6 +50,7 @@ function generate(n, seed, difficulty) {
 
 async function newLevel({ n = +$('#size').value, difficulty = $('#difficulty').value || null, seed, daily = false } = {}) {
   seed ??= (Math.random() * 2 ** 32) >>> 0;
+  $('#loading').textContent = 'Genero il livello…';
   $('#loading').hidden = false;
   try {
     const { level, ms } = await generate(n, seed, difficulty);
@@ -53,10 +59,9 @@ async function newLevel({ n = +$('#size').value, difficulty = $('#difficulty').v
     level.daily = daily;
     level.requested = difficulty;
     startLevel(level);
-  } catch (err) {
-    alert('Errore nella generazione: ' + err.message);
-  } finally {
     $('#loading').hidden = true;
+  } catch (err) {
+    $('#loading').textContent = 'Non sono riuscito a generare il livello. Riprova con “Nuovo livello”.';
   }
 }
 
