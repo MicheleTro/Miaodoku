@@ -123,7 +123,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // ---- frontend compilato (produzione): stesso server, stessa origine
   if (opts.staticDir && existsSync(opts.staticDir)) {
-    await app.register(fastifyStatic, { root: opts.staticDir, wildcard: false });
+    await app.register(fastifyStatic, { root: opts.staticDir });
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/')) return reply.status(404).send({ error: 'Non trovato' });
       return reply.sendFile('index.html');
