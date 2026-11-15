@@ -1,0 +1,12 @@
+{
+  "name": "gattile-prototipo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prototipo web di un puzzle logico a tema gatti: engine di generazione livelli e stima della difficoltà.",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node --test test/*.test.mjs",
+    "stats": "node scripts/genera.mjs --stats"
+  }
+}

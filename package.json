@@ -1,12 +1,21 @@
 {
-  "name": "gattile-prototipo",
-  "version": "0.1.0",
+  "name": "bradoku",
   "private": true,
   "type": "module",
-  "description": "Prototipo web di un puzzle logico a tema gatti: engine di generazione livelli e stima della difficoltà.",
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=20" },
   "scripts": {
-    "start": "python3 -m http.server 8000",
-    "test": "node --test test/*.test.mjs",
-    "stats": "node scripts/genera.mjs --stats"
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "vitest run",
+    "dev": "pnpm --parallel --filter @bradoku/server --filter @bradoku/web run dev",
+    "build": "pnpm --filter @bradoku/web run build",
+    "start": "pnpm --filter @bradoku/server run start",
+    "stats": "tsx packages/core/scripts/stats.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }
