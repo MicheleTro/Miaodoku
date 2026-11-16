@@ -1,4 +1,5 @@
-import { api, setToken, storage, type Profile, type GameStart, type FinishResult } from './api.js';
+import { api, storage, type Profile, type GameStart, type FinishResult } from './api.js';
+import { logout as leave } from './auth.svelte.js';
 
 export type Screen = 'loading' | 'login' | 'home' | 'play' | 'result' | 'challenges' | 'profile';
 
@@ -41,9 +42,9 @@ export function startPlaying(g: GameStart): void {
   go('play');
 }
 
-export function logout(): void {
-  setToken(null);
+/** Esce dal gioco e torna al portale whoru. */
+export async function logout(): Promise<void> {
   setCurrentGame(null);
   ui.profile = null;
-  go('login');
+  await leave();
 }

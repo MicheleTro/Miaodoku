@@ -1,9 +1,11 @@
 import { pgTable, serial, text, integer, boolean, timestamp, jsonb, bigint } from 'drizzle-orm/pg-core';
 
+// Utenti: chiave = `sub` di whoru (decisione whoru #25: mai username o email come chiave).
+// Il nome serve solo per mostrarlo e si aggiorna a ogni accesso; nessuna password qui.
 export const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  username: text('username').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  id: text('id').primaryKey(),
+  username: text('username').notNull(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   xp: integer('xp').notNull().default(0),
   streak: integer('streak').notNull().default(0),
@@ -24,13 +26,13 @@ export const users = pgTable('users', {
 
 export const challenges = pgTable('challenges', {
   id: serial('id').primaryKey(),
-  creatorId: integer('creator_id').notNull(),
-  opponentId: integer('opponent_id').notNull(),
+  creatorId: text('creator_id').notNull(),
+  opponentId: text('opponent_id').notNull(),
   n: integer('n').notNull(),
   difficulty: text('difficulty').notNull(),
   seed: bigint('seed', { mode: 'number' }).notNull(),
   status: text('status').notNull().default('open'),
-  winnerId: integer('winner_id'),
+  winnerId: text('winner_id'),
   rematchOf: integer('rematch_of'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -38,7 +40,7 @@ export const challenges = pgTable('challenges', {
 
 export const games = pgTable('games', {
   id: serial('id').primaryKey(),
-  userId: integer('user_id').notNull(),
+  userId: text('user_id').notNull(),
   challengeId: integer('challenge_id'),
   n: integer('n').notNull(),
   difficulty: text('difficulty').notNull(),
@@ -59,9 +61,9 @@ export type Challenge = typeof challenges.$inferSelect;
 
 export const MIGRATION = `
 CREATE TABLE IF NOT EXISTS users (
-  id serial PRIMARY KEY,
-  username text NOT NULL UNIQUE,
-  password_hash text NOT NULL,
+  id text PRIMARY KEY,
+  username text NOT NULL,
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   xp integer NOT NULL DEFAULT 0,
   streak integer NOT NULL DEFAULT 0,
@@ -81,20 +83,20 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE TABLE IF NOT EXISTS challenges (
   id serial PRIMARY KEY,
-  creator_id integer NOT NULL REFERENCES users(id),
-  opponent_id integer NOT NULL REFERENCES users(id),
+  creator_id text NOT NULL REFERENCES users(id),
+  opponent_id text NOT NULL REFERENCES users(id),
   n integer NOT NULL,
   difficulty text NOT NULL,
   seed bigint NOT NULL,
   status text NOT NULL DEFAULT 'open',
-  winner_id integer,
+  winner_id text,
   rematch_of integer,
   created_at timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz
 );
 CREATE TABLE IF NOT EXISTS games (
   id serial PRIMARY KEY,
-  user_id integer NOT NULL REFERENCES users(id),
+  user_id text NOT NULL REFERENCES users(id),
   challenge_id integer REFERENCES challenges(id),
   n integer NOT NULL,
   difficulty text NOT NULL,
