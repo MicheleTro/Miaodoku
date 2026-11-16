@@ -39,6 +39,18 @@ pnpm typecheck   # TypeScript su core e server, svelte-check sul frontend
 `render.yaml` crea su Render un servizio Node (API + frontend) e un database Postgres: su Render basta
 "New → Blueprint" puntando a questo repository e al branch `bradoku`.
 
+### Coolify
+
+Il `Dockerfile` nella radice costruisce un'unica immagine (API + frontend) che ascolta sulla porta 3000.
+
+1. In Coolify: **New Resource → Public/Private Repository**, repository `micheletro/miaodoku`, branch `bradoku`.
+2. Build Pack: **Dockerfile** (percorso `/Dockerfile`), porta esposta **3000**.
+3. Variabili d'ambiente: `JWT_SECRET` (una stringa lunga e casuale, obbligatoria).
+   Per i dati scegli una delle due:
+   - **Postgres** (consigliato): crea un database Postgres in Coolify e imposta `DATABASE_URL` con la sua connection string interna;
+   - **PGlite**: senza `DATABASE_URL` i dati vanno in `/data/pglite`; aggiungi in Coolify un **Persistent Storage** montato su `/data`, altrimenti si perdono a ogni deploy.
+4. Health check: `GET /api/health`.
+
 ## Regole di gioco implementate
 
 - **Punteggio**: `Punti = round(D × (1 + 0,3·T) × (1 + 0,2·E) × A)` — D difficoltà dell'engine, T bonus tempo
