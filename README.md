@@ -22,10 +22,37 @@ pnpm start          # server su http://localhost:3000 (API + frontend)
 ```
 
 Per sviluppare con ricarica automatica: `pnpm dev` (server su :3000, Vite su :5173 con proxy verso `/api`).
+In locale, senza portale: `DEV_LOGIN=true pnpm dev` e poi `http://localhost:5173/api/auth/dev?user=mario`
+(gli utenti `dev-…` sono tutti amici tra loro). Il database PGlite della versione con account propri non è
+compatibile: se il server lo segnala, cancella `apps/server/.data/`.
 
-Variabili d'ambiente del server: `PORT` (3000), `DATABASE_URL` (Postgres; se assente usa PGlite),
-`PGLITE_DIR` (cartella dati di PGlite), `JWT_SECRET` (obbligatorio in produzione), `CORS_ORIGIN`, `STATIC_DIR`.
-Per il frontend servito da un'altra origine: `VITE_API_URL`.
+## Accesso: whoru
+
+Bradoku non ha account propri: l'identità arriva dal portale **whoru** (`slothymic.com`), come per il Paroliere
+(decisioni whoru #24, #27, #28).
+
+1. Senza sessione, il gioco manda a `<PORTAL_URL>/launch/bradoku`; il portale fa entrare il giocatore e lo
+   rimanda a `/api/auth/callback?token=…` con un token **EdDSA** di 60 secondi.
+2. Il server verifica firma (chiave in `<PORTAL_URL>/.well-known/jwks.json`), emittente, destinatario
+   (`SERVICE_ID`), scadenza e che il token non sia già stato usato, poi apre una sessione propria in un cookie
+   `HttpOnly` (`__Host-bradoku_session`, 8 ore). Nessun token in JavaScript.
+3. Gli utenti hanno come chiave il `sub` di whoru; il nome serve solo per mostrarlo.
+4. Si sfidano **solo gli amici del portale**: il server li legge dall'API del portale con `PORTAL_SERVICE_TOKEN`
+   e controlla l'amicizia a ogni sfida e rivincita.
+5. Il browser chiede ogni minuto al portale chi è entrato (`/api/session`): se il giocatore è uscito o è
+   cambiato, il gioco chiude la sessione, ma mai durante una partita.
+
+Variabili d'ambiente del server:
+
+| Variabile | Cosa | Predefinito |
+|---|---|---|
+| `SESSION_SECRET` | Firma del cookie di sessione, almeno 32 caratteri | **obbligatoria** in produzione |
+| `PORTAL_URL` | Indirizzo del portale whoru | `https://slothymic.com` |
+| `SERVICE_ID` | Id nel registro del portale (= `aud` del token) | `bradoku` |
+| `PORTAL_SERVICE_TOKEN` | Token per l'API amici, = `SERVICE_TOKEN_BRADOKU` sul portale | senza, niente sfide |
+| `DATABASE_URL` | Postgres; se assente, PGlite in `PGLITE_DIR` | — |
+| `DEV_LOGIN` | `true` = accesso di sviluppo senza portale (ignorato in produzione) | — |
+| `PORT`, `STATIC_DIR`, `CORS_ORIGIN` | Porta, frontend compilato, origini esterne ammesse (di norma nessuna) | `3000` |
 
 ## Controlli
 
@@ -36,20 +63,22 @@ pnpm typecheck   # TypeScript su core e server, svelte-check sul frontend
 
 ## Deploy
 
-`render.yaml` crea su Render un servizio Node (API + frontend) e un database Postgres: su Render basta
-"New → Blueprint" puntando a questo repository e al branch `bradoku`.
-
 ### Coolify
 
 Il `Dockerfile` nella radice costruisce un'unica immagine (API + frontend) che ascolta sulla porta 3000.
 
 1. In Coolify: **New Resource → Public/Private Repository**, repository `micheletro/miaodoku`, branch `bradoku`.
 2. Build Pack: **Dockerfile** (percorso `/Dockerfile`), porta esposta **3000**.
-3. Variabili d'ambiente: `JWT_SECRET` (una stringa lunga e casuale, obbligatoria).
-   Per i dati scegli una delle due:
-   - **Postgres** (consigliato): crea un database Postgres in Coolify e imposta `DATABASE_URL` con la sua connection string interna;
-   - **PGlite**: senza `DATABASE_URL` i dati vanno in `/data/pglite`; aggiungi in Coolify un **Persistent Storage** montato su `/data`, altrimenti si perdono a ogni deploy.
-4. Health check: `GET /api/health`.
+3. Variabili d'ambiente: `SESSION_SECRET`, `PORTAL_URL`, `PORTAL_SERVICE_TOKEN` (vedi sopra) e i dati:
+   - **Postgres** (consigliato): un database e un ruolo nell'istanza condivisa di whoru (decisione whoru #25),
+     `DATABASE_URL` con la connection string interna;
+   - **PGlite**: senza `DATABASE_URL` i dati vanno in `/data/pglite`; serve un **Persistent Storage** su `/data`.
+4. Health check: quello dell'immagine (`wget` su `127.0.0.1:3000/api/health`), oppure in Coolify `GET /api/health`
+   con host `127.0.0.1` (non `localhost`: nelle immagini Alpine punta a `::1`).
+5. Nel portale whoru, Bradoku deve essere nel registro delle risorse (id `bradoku`, callback `/api/auth/callback`)
+   con lo stesso token in `SERVICE_TOKEN_BRADOKU`.
+
+Il container gira come utente `node`, senza privilegi.
 
 ## Regole di gioco implementate
 
@@ -64,4 +93,4 @@ Il `Dockerfile` nella radice costruisce un'unica immagine (API + frontend) che a
   Si può sfidare un amico sul livello appena risolto; rivincita con un tocco; bilancio con ogni amico. I Lumi non valgono.
 - **18 medaglie** (Base, Tecniche, Sfide, Serie) e **13 accessori** per i bradipi, sbloccati con livelli e medaglie.
 
-Il profilo per ora è locale (nome e password); più avanti arriverà dal portale whoru.
+Il profilo è quello di whoru: nome e gruppi arrivano dal portale (vedi *Accesso*).

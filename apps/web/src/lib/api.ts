@@ -1,7 +1,6 @@
 import type { CategoryId, TechniqueId } from '@bradoku/core';
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
-const TOKEN_KEY = 'bradoku.token';
 
 export const storage = {
   get(key: string): string | null {
@@ -27,29 +26,36 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Chiamata all'API. L'identità viaggia nel cookie di sessione (HttpOnly, impostato dopo l'accesso dal
+ * portale whoru): nessun token in JavaScript. Su 401 si torna al portale, che riporta qui dopo l'accesso.
+ */
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token = storage.get(TOKEN_KEY);
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['content-type'] = 'application/json';
-  if (token) headers.authorization = `Bearer ${token}`;
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    res = await fetch(`${BASE}/api${path}`, {
+      method,
+      headers,
+      credentials: BASE ? 'include' : 'same-origin',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
   } catch {
     throw new ApiError(0, 'Server non raggiungibile. Controlla la connessione e riprova.');
   }
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && (data as { loginUrl?: string }).loginUrl) {
+    window.location.assign((data as { loginUrl: string }).loginUrl);
+  }
   if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? 'Qualcosa è andato storto');
   return data as T;
 }
 
-export const setToken = (t: string | null) => storage.set(TOKEN_KEY, t);
-export const hasToken = () => !!storage.get(TOKEN_KEY);
-
 // ---- tipi delle risposte
 
 export interface Profile {
-  id: number;
+  id: string;
   username: string;
   xp: number;
   level: number;
@@ -97,6 +103,7 @@ export interface ChallengeResult {
 export interface ChallengeView {
   id: number;
   opponent: string;
+  opponentId: string;
   iCreated: boolean;
   n: number;
   difficulty: CategoryId;
@@ -123,7 +130,9 @@ export interface FinishResult {
   gameId: number;
 }
 
+/** Amico del portale whoru, con il bilancio delle sfide giocate insieme. */
 export interface Friend {
+  id: string;
   username: string;
   wins: number;
   losses: number;

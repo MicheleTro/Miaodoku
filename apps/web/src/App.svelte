@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ui, go, refreshProfile } from './lib/state.svelte.js';
-  import { hasToken } from './lib/api.js';
+  import { checkSession, watchPortalSession } from './lib/auth.svelte.js';
   import Login from './screens/Login.svelte';
   import Home from './screens/Home.svelte';
   import Play from './screens/Play.svelte';
@@ -13,13 +13,17 @@
   import Sloth from './components/Sloth.svelte';
 
   onMount(async () => {
-    if (!hasToken()) return go('login');
+    // Senza sessione checkSession rimanda al portale whoru; la schermata "login" resta solo se il
+    // server non risponde o se il rimando non parte.
+    if (!(await checkSession())) return go('login');
     try {
       await refreshProfile();
       go('home');
     } catch {
-      go('login');
+      return go('login');
     }
+    // Uscita dal portale: il gioco se ne accorge, ma non durante una partita
+    watchPortalSession(() => ui.screen === 'play');
   });
 </script>
 

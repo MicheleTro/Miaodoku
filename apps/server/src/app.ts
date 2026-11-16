@@ -1,70 +1,134 @@
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
-import { eq, ilike, and, ne } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import type { JWTVerifyGetKey } from 'jose';
 import { z } from 'zod';
 import type { DB } from './db/index.js';
 import { users } from './db/schema.js';
-import { hashPassword, verifyPassword, tokens } from './auth.js';
+import {
+  ADMIN_GROUP, clearedCookie, cookieName, portalVerifier, readCookie, sessionCookie, sessions, type PlayerSession,
+} from './auth.js';
+import { devPortal, httpPortal, missingPortal, PortalUnavailableError, type Portal } from './portal.js';
 import {
   HttpError, getUser, profile, startGame, resumeGame, finishGame, listChallenges, createChallenge, playChallenge,
-  rematch, friends, getChallenge, challengeView,
+  rematch, friends, getChallenge, challengeView, otherPlayer, rememberUser,
 } from './game.js';
 import { unlockedAccessories, levelFromXp } from '@bradoku/core';
 
 const CATEGORY = z.enum(['facile', 'medio', 'difficile', 'esperto', 'diabolico']);
 const SIZE = z.number().int().min(5).max(10);
-const credentials = z.object({
-  username: z.string().trim().regex(/^[A-Za-z0-9_]{3,20}$/, 'Il nome deve avere 3–20 caratteri tra lettere, numeri e _'),
-  password: z.string().min(6, 'La password deve avere almeno 6 caratteri').max(200),
-});
+const SUB = z.string().min(1).max(128);
 
 export interface AppOptions {
   db: DB;
-  jwtSecret: string;
-  corsOrigin?: boolean | string | string[];
+  /** Firma del cookie di sessione del gioco (almeno 32 caratteri in produzione). */
+  sessionSecret: string;
+  /** Portale whoru: emette i token di accesso e pubblica la chiave in /.well-known/jwks.json. */
+  portalUrl: string;
+  /** Id di questo servizio nel registro del portale: deve coincidere con `aud` del token. */
+  serviceId?: string;
+  /** Token per l'API amici del portale (stesso valore di SERVICE_TOKEN_BRADOKU sul portale). */
+  portalServiceToken?: string;
+  /** Solo sviluppo: /api/auth/dev per entrare senza portale. Ignorato in produzione. */
+  devLogin?: boolean;
+  production?: boolean;
+  /** Origini ammesse per chiamate da un altro sito (con cookie). Di norma nessuna: stessa origine. */
+  corsOrigin?: string[];
   staticDir?: string;
   logger?: boolean;
+  /** Per i test: chiavi del portale al posto di quelle scaricate da /.well-known/jwks.json. */
+  portalJwks?: JWTVerifyGetKey;
+  /** Per i test: amici al posto dell'API del portale. */
+  portal?: Portal;
+}
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    session?: PlayerSession;
+  }
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false });
   const { db } = opts;
-  const jwt = tokens(opts.jwtSecret);
-  await app.register(cors, { origin: opts.corsOrigin ?? true });
+  const production = opts.production ?? false;
+  const devLogin = !!opts.devLogin && !production;
+  const portalUrl = opts.portalUrl.replace(/\/+$/, '');
+  const serviceId = opts.serviceId ?? 'bradoku';
+  const loginUrl = devLogin ? '/api/auth/dev?user=dev' : `${portalUrl}/launch/${serviceId}`;
+  const cookie = cookieName(production);
+  const session = sessions(opts.sessionSecret);
+  const verifyPortalToken = portalVerifier({ portalUrl, serviceId, jwks: opts.portalJwks });
+  const portal: Portal =
+    opts.portal ??
+    (opts.portalServiceToken ? httpPortal(portalUrl, opts.portalServiceToken) : devLogin ? devPortal(db) : missingPortal());
+
+  if (opts.corsOrigin?.length) await app.register(cors, { origin: opts.corsOrigin, credentials: true });
 
   app.setErrorHandler((err, _req, reply) => {
-    if (err instanceof HttpError) return reply.status(err.status).send({ error: err.message });
+    // 401: con l'indirizzo per entrare dal portale, così il frontend sa dove mandare il giocatore
+    if (err instanceof HttpError) return reply.status(err.status).send({ error: err.message, ...(err.status === 401 ? { loginUrl } : {}) });
+    if (err instanceof PortalUnavailableError) {
+      app.log.warn(err.message);
+      return reply.status(503).send({ error: 'Il portale non risponde: riprova tra poco' });
+    }
     if (err instanceof z.ZodError) return reply.status(400).send({ error: err.issues[0]?.message ?? 'Dati non validi' });
     app.log.error(err);
     return reply.status(500).send({ error: 'Errore del server' });
   });
 
-  async function userId(req: FastifyRequest): Promise<number> {
-    const h = req.headers.authorization ?? '';
-    const id = h.startsWith('Bearer ') ? await jwt.verify(h.slice(7)) : null;
-    if (!id) throw new HttpError(401, 'Accesso richiesto');
-    return id;
+  /** Chi chiama: dalla sessione nel cookie. Senza, 401 (con l'indirizzo per entrare dal portale). */
+  async function userId(req: FastifyRequest): Promise<string> {
+    const token = readCookie(req.headers.cookie, cookie);
+    const s = token ? await session.verify(token) : null;
+    if (!s) throw new HttpError(401, 'Accesso richiesto');
+    req.session = s;
+    return s.sub;
   }
   const idParam = (req: FastifyRequest) => z.coerce.number().int().positive().parse((req.params as { id: string }).id);
 
-  // ---- account
-  app.post('/api/auth/register', async (req) => {
-    const { username, password } = credentials.parse(req.body);
-    const [taken] = await db.select({ id: users.id }).from(users).where(ilike(users.username, username));
-    if (taken) throw new HttpError(409, 'Questo nome è già usato');
-    const [u] = await db.insert(users).values({ username, passwordHash: await hashPassword(password) }).returning();
-    return { token: await jwt.sign(u!.id), profile: await profile(db, u!) };
+  async function openSession(reply: FastifyReply, s: PlayerSession) {
+    await rememberUser(db, { sub: s.sub, username: s.username });
+    return reply
+      .header('Set-Cookie', sessionCookie(cookie, await session.sign(s), production))
+      .header('Cache-Control', 'no-store')
+      .header('Referrer-Policy', 'no-referrer')
+      .redirect('/');
+  }
+
+  // ---- accesso (identità da whoru)
+
+  // Ritorno dal portale: scambia il token breve con la sessione del gioco e toglie il token dall'indirizzo.
+  app.get('/api/auth/callback', async (req, reply) => {
+    const q = z.object({ token: z.string().min(20).max(4096) }).safeParse(req.query);
+    const s = q.success ? await verifyPortalToken(q.data.token) : null;
+    // Token scaduto, già usato o non valido: si riparte dal portale
+    if (!s) return reply.header('Cache-Control', 'no-store').redirect(loginUrl);
+    return openSession(reply, s);
   });
 
-  app.post('/api/auth/login', async (req) => {
-    const { username, password } = z.object({ username: z.string().trim(), password: z.string() }).parse(req.body);
-    const [u] = await db.select().from(users).where(ilike(users.username, username));
-    if (!u || !(await verifyPassword(password, u.passwordHash))) throw new HttpError(401, 'Nome o password non corretti');
-    return { token: await jwt.sign(u.id), profile: await profile(db, u) };
+  app.get('/api/auth/me', async (req, reply) => {
+    await userId(req);
+    const s = req.session!;
+    return reply.header('Cache-Control', 'no-store').send({
+      id: s.sub, username: s.username, isAdmin: s.groups.includes(ADMIN_GROUP), loginUrl, portalUrl,
+    });
   });
 
+  // Esce dal gioco (la sessione del portale resta: si esce da lì).
+  app.post('/api/auth/logout', async (_req, reply) => reply.header('Set-Cookie', clearedCookie(cookie, production)).code(204).send());
+
+  // Solo sviluppo (mai in produzione): entra senza portale. /api/auth/dev?user=mario&admin=1
+  if (devLogin) {
+    app.get('/api/auth/dev', async (req, reply) => {
+      const q = z.object({ user: z.string().regex(/^[a-z0-9_]{1,32}$/).default('dev'), admin: z.string().optional() }).parse(req.query);
+      return openSession(reply, { sub: `dev-${q.user}`, username: q.user, groups: q.admin ? [ADMIN_GROUP, 'membri'] : ['membri'] });
+    });
+  }
+
+  // ---- profilo
   app.get('/api/me', async (req) => profile(db, await getUser(db, await userId(req))));
 
   app.put('/api/me/accessory', async (req) => {
@@ -73,17 +137,6 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!unlockedAccessories(levelFromXp(u.xp).level, u.medals).includes(accessory)) throw new HttpError(403, 'Accessorio non ancora sbloccato');
     await db.update(users).set({ accessory }).where(eq(users.id, u.id));
     return profile(db, { ...u, accessory });
-  });
-
-  app.get('/api/users', async (req) => {
-    const me = await userId(req);
-    const { q } = z.object({ q: z.string().trim().max(20).default('') }).parse(req.query);
-    const rows = await db
-      .select({ username: users.username })
-      .from(users)
-      .where(and(ne(users.id, me), ilike(users.username, `${q.replace(/[%_]/g, '')}%`)))
-      .limit(8);
-    return rows.map((r) => r.username);
   });
 
   // ---- partite
@@ -102,23 +155,38 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return finishGame(db, await userId(req), idParam(req), body);
   });
 
-  // ---- sfide
+  // ---- sfide: solo tra amici del portale (decisione whoru #28)
   app.get('/api/challenges', async (req) => listChallenges(db, await userId(req)));
 
   app.post('/api/challenges', async (req) => {
     const u = await getUser(db, await userId(req));
-    const body = z.object({ opponent: z.string().trim().min(1), n: SIZE.optional(), difficulty: CATEGORY.optional(), fromGameId: z.number().int().optional() }).parse(req.body);
-    return createChallenge(db, u, body);
+    const body = z.object({ opponent: SUB, n: SIZE.optional(), difficulty: CATEGORY.optional(), fromGameId: z.number().int().optional() }).parse(req.body);
+    if (body.opponent === u.id) throw new HttpError(400, 'Non puoi sfidare te stesso');
+    const friend = await portal.check(u.id, body.opponent);
+    if (!friend) throw new HttpError(403, 'Puoi sfidare solo i tuoi amici del portale');
+    return createChallenge(db, u, { ...body, opponent: friend });
   });
 
   app.get('/api/challenges/:id', async (req) => {
-    const me = await userId(req);
-    return challengeView(db, me, await getChallenge(db, me, idParam(req)));
+    const id = await userId(req);
+    return challengeView(db, id, await getChallenge(db, id, idParam(req)));
   });
 
   app.post('/api/challenges/:id/play', async (req) => playChallenge(db, await getUser(db, await userId(req)), idParam(req)));
-  app.post('/api/challenges/:id/rematch', async (req) => rematch(db, await getUser(db, await userId(req)), idParam(req)));
-  app.get('/api/friends', async (req) => friends(db, await userId(req)));
+
+  app.post('/api/challenges/:id/rematch', async (req) => {
+    const u = await getUser(db, await userId(req));
+    const c = await getChallenge(db, u.id, idParam(req));
+    const friend = await portal.check(u.id, otherPlayer(c, u.id));
+    if (!friend) throw new HttpError(403, 'Non siete più amici nel portale');
+    return rematch(db, u, c, friend);
+  });
+
+  app.get('/api/friends', async (req) => {
+    const id = await userId(req);
+    return friends(db, id, await portal.friends(id));
+  });
+
   app.get('/api/health', async () => ({ ok: true }));
 
   // ---- frontend compilato (produzione): stesso server, stessa origine

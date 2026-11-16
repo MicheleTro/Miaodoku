@@ -9,6 +9,7 @@ import {
   type CategoryId, type RatedLevel, type PlayerStats,
 } from '@bradoku/core';
 import type { DB } from './db/index.js';
+import type { Friend } from './portal.js';
 import { users, games, challenges, type User, type Game, type Challenge } from './db/schema.js';
 
 export class HttpError extends Error {
@@ -53,7 +54,7 @@ function stats(u: User): PlayerStats {
   };
 }
 
-export async function getUser(db: DB, id: number): Promise<User> {
+export async function getUser(db: DB, id: string): Promise<User> {
   const [u] = await db.select().from(users).where(eq(users.id, id));
   if (!u) throw new HttpError(401, 'Utente non trovato');
   return u;
@@ -145,7 +146,7 @@ export interface FinishInput {
   clean: boolean;
 }
 
-export async function finishGame(db: DB, userId: number, gameId: number, input: FinishInput) {
+export async function finishGame(db: DB, userId: string, gameId: number, input: FinishInput) {
   const before = await getUser(db, userId);
   const [g] = await db.select().from(games).where(and(eq(games.id, gameId), eq(games.userId, userId)));
   if (!g) throw new HttpError(404, 'Partita non trovata');
@@ -226,7 +227,7 @@ async function resolveChallenge(db: DB, challengeId: number): Promise<Challenge>
   const winnerId = cmp > 0 ? c.creatorId : cmp < 0 ? c.opponentId : null;
   const [done] = await db.update(challenges).set({ status: 'completed', winnerId, completedAt: new Date() }).where(eq(challenges.id, c.id)).returning();
 
-  let lostOriginal = new Set<number>();
+  let lostOriginal = new Set<string>();
   if (c.rematchOf) {
     const [orig] = await db.select().from(challenges).where(eq(challenges.id, c.rematchOf));
     if (orig?.winnerId) lostOriginal = new Set([orig.creatorId, orig.opponentId].filter((id) => id !== orig.winnerId));
@@ -246,17 +247,17 @@ async function resolveChallenge(db: DB, challengeId: number): Promise<Challenge>
   return done!;
 }
 
-async function usernames(db: DB, ids: number[]): Promise<Map<number, string>> {
+async function usernames(db: DB, ids: string[]): Promise<Map<string, string>> {
   if (!ids.length) return new Map();
   const rows = await db.select({ id: users.id, username: users.username, accessory: users.accessory }).from(users).where(inArray(users.id, [...new Set(ids)]));
   return new Map(rows.map((r) => [r.id, r.username]));
 }
 
-export async function challengeView(db: DB, me: number, c: Challenge, names?: Map<number, string>, gamesOf?: Game[]) {
+export async function challengeView(db: DB, me: string, c: Challenge, names?: Map<string, string>, gamesOf?: Game[]) {
   const nm = names ?? (await usernames(db, [c.creatorId, c.opponentId]));
   const gs = gamesOf ?? (await db.select().from(games).where(eq(games.challengeId, c.id)));
   const other = c.creatorId === me ? c.opponentId : c.creatorId;
-  const res = (id: number) => {
+  const res = (id: string) => {
     const g = gs.find((x) => x.userId === id && x.status === 'done');
     return g ? { played: true, points: g.points ?? 0, hints: g.hints ?? 0, durationMs: g.durationMs ?? 0, clean: !!g.clean } : { played: false };
   };
@@ -266,6 +267,7 @@ export async function challengeView(db: DB, me: number, c: Challenge, names?: Ma
   return {
     id: c.id,
     opponent: nm.get(other) ?? '?',
+    opponentId: other,
     iCreated: c.creatorId === me,
     n: c.n,
     difficulty: c.difficulty,
@@ -281,17 +283,21 @@ export async function challengeView(db: DB, me: number, c: Challenge, names?: Ma
   };
 }
 
-export async function listChallenges(db: DB, me: number) {
+export async function listChallenges(db: DB, me: string) {
   const list = await db.select().from(challenges).where(or(eq(challenges.creatorId, me), eq(challenges.opponentId, me))).orderBy(desc(challenges.createdAt)).limit(60);
   const names = await usernames(db, list.flatMap((c) => [c.creatorId, c.opponentId]));
   const gs = list.length ? await db.select().from(games).where(inArray(games.challengeId, list.map((c) => c.id))) : [];
   return Promise.all(list.map((c) => challengeView(db, me, c, names, gs.filter((g) => g.challengeId === c.id))));
 }
 
-export async function createChallenge(db: DB, me: User, input: { opponent: string; n?: number; difficulty?: CategoryId; fromGameId?: number; rematchOf?: number }) {
-  const [opp] = await db.select().from(users).where(eq(users.username, input.opponent));
-  if (!opp) throw new HttpError(404, `Nessun giocatore si chiama "${input.opponent}"`);
-  if (opp.id === me.id) throw new HttpError(400, 'Non puoi sfidare te stesso');
+/**
+ * Nuova sfida verso un amico già verificato dal portale (`opponent` arriva da Portal.check, mai dal
+ * browser). L'amico potrebbe non aver mai aperto Bradoku: la sua riga si crea qui.
+ */
+export async function createChallenge(db: DB, me: User, input: { opponent: Friend; n?: number; difficulty?: CategoryId; fromGameId?: number; rematchOf?: number }) {
+  if (input.opponent.sub === me.id) throw new HttpError(400, 'Non puoi sfidare te stesso');
+  await rememberUser(db, input.opponent);
+  const opp = { id: input.opponent.sub };
 
   if (input.fromGameId) {
     const [g] = await db.select().from(games).where(and(eq(games.id, input.fromGameId), eq(games.userId, me.id)));
@@ -309,7 +315,7 @@ export async function createChallenge(db: DB, me: User, input: { opponent: strin
   return challengeView(db, me.id, c!);
 }
 
-export async function getChallenge(db: DB, me: number, id: number): Promise<Challenge> {
+export async function getChallenge(db: DB, me: string, id: number): Promise<Challenge> {
   const [c] = await db.select().from(challenges).where(eq(challenges.id, id));
   if (!c || (c.creatorId !== me && c.opponentId !== me)) throw new HttpError(404, 'Sfida non trovata');
   return c;
@@ -324,25 +330,33 @@ export async function playChallenge(db: DB, me: User, id: number) {
   return startGame(db, me, { n: c.n, difficulty: c.difficulty as CategoryId, challenge: c });
 }
 
-export async function rematch(db: DB, me: User, id: number) {
-  const c = await getChallenge(db, me.id, id);
-  const otherId = c.creatorId === me.id ? c.opponentId : c.creatorId;
-  const [other] = await db.select().from(users).where(eq(users.id, otherId));
-  return createChallenge(db, me, { opponent: other!.username, n: c.n, difficulty: c.difficulty as CategoryId, rematchOf: c.id });
+/** Rivincita: `opponent` è l'altro giocatore della sfida, verificato di nuovo come amico dal chiamante. */
+export async function rematch(db: DB, me: User, c: Challenge, opponent: Friend) {
+  return createChallenge(db, me, { opponent, n: c.n, difficulty: c.difficulty as CategoryId, rematchOf: c.id });
 }
 
-/** Bilancio con ogni avversario. */
-export async function friends(db: DB, me: number) {
+export const otherPlayer = (c: Challenge, me: string): string => (c.creatorId === me ? c.opponentId : c.creatorId);
+
+/** Registra (o aggiorna) la riga dell'utente: chiave `sub`, il nome serve solo per mostrarlo. */
+export async function rememberUser(db: DB, who: Friend): Promise<void> {
+  await db
+    .insert(users)
+    .values({ id: who.sub, username: who.username })
+    .onConflictDoUpdate({ target: users.id, set: { username: who.username, lastSeenAt: new Date() } });
+}
+
+/** Amici del portale con il bilancio delle sfide giocate con ciascuno (anche zero). */
+export async function friends(db: DB, me: string, portalFriends: Friend[]) {
   const list = await db.select().from(challenges).where(and(eq(challenges.status, 'completed'), or(eq(challenges.creatorId, me), eq(challenges.opponentId, me))));
-  const names = await usernames(db, list.flatMap((c) => [c.creatorId, c.opponentId]));
-  const by = new Map<number, { username: string; wins: number; losses: number; draws: number }>();
+  const by = new Map(portalFriends.map((f) => [f.sub, { id: f.sub, username: f.username, wins: 0, losses: 0, draws: 0 }]));
   for (const c of list) {
-    const other = c.creatorId === me ? c.opponentId : c.creatorId;
-    const row = by.get(other) ?? { username: names.get(other) ?? '?', wins: 0, losses: 0, draws: 0 };
+    const row = by.get(c.creatorId === me ? c.opponentId : c.creatorId);
+    if (!row) continue; // non più amici: il bilancio non si mostra
     if (c.winnerId === me) row.wins++;
     else if (c.winnerId === null) row.draws++;
     else row.losses++;
-    by.set(other, row);
   }
-  return [...by.values()].sort((a, b) => b.wins + b.losses + b.draws - (a.wins + a.losses + a.draws));
+  return [...by.values()].sort(
+    (a, b) => b.wins + b.losses + b.draws - (a.wins + a.losses + a.draws) || a.username.localeCompare(b.username, 'it'),
+  );
 }

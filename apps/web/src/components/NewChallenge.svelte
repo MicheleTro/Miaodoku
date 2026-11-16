@@ -1,40 +1,37 @@
 <script lang="ts">
   import type { CategoryId } from '@bradoku/core';
-  import { api, type ChallengeView } from '../lib/api.js';
+  import { api, type ChallengeView, type Friend } from '../lib/api.js';
+  import { auth } from '../lib/auth.svelte.js';
   import { ui, go, toast } from '../lib/state.svelte.js';
   import Modal from './Modal.svelte';
   import Icon from './Icon.svelte';
 
   const from = ui.challengeFrom!;
-  let opponent = $state('');
-  let suggestions = $state<string[]>([]);
+  // Si sfidano solo gli amici del portale whoru (decisione whoru #28): l'elenco arriva dal server.
+  let friends = $state<Friend[] | null>(null);
+  let opponent = $state<Friend | null>(null);
   let n = $state(7);
   let difficulty = $state<CategoryId>('medio');
   let busy = $state(false);
   let error = $state('');
-  let timer: ReturnType<typeof setTimeout> | undefined;
 
-  function search() {
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      try {
-        suggestions = await api<string[]>('GET', `/users?q=${encodeURIComponent(opponent)}`);
-      } catch {
-        suggestions = [];
-      }
-    }, 200);
-  }
-  search();
+  api<Friend[]>('GET', '/friends')
+    .then((list) => (friends = list))
+    .catch((err) => {
+      friends = [];
+      error = (err as Error).message;
+    });
 
   async function send(e: SubmitEvent) {
     e.preventDefault();
+    if (!opponent) return;
     busy = true;
     error = '';
     try {
-      const body = from.gameId ? { opponent, fromGameId: from.gameId } : { opponent, n, difficulty };
+      const body = from.gameId ? { opponent: opponent.id, fromGameId: from.gameId } : { opponent: opponent.id, n, difficulty };
       await api<ChallengeView>('POST', '/challenges', body);
       ui.challengeFrom = null;
-      toast(`Sfida inviata a ${opponent}!`);
+      toast(`Sfida inviata a ${opponent.username}!`);
       go('challenges');
     } catch (err) {
       error = (err as Error).message;
@@ -53,13 +50,20 @@
     <p class="muted">
       {from.gameId ? 'Il tuo risultato è già registrato: il tuo amico giocherà lo stesso identico livello.' : 'Giocate lo stesso livello, ognuno quando vuole. Vince chi fa più punti.'}
     </p>
-    <label class="field">Chi sfidi?
-      <input id="opponent" bind:value={opponent} oninput={search} placeholder="nome del giocatore" autocomplete="off" required />
-    </label>
-    {#if suggestions.length}
+    <h3>Chi sfidi?</h3>
+    {#if friends === null}
+      <p class="muted">Carico i tuoi amici…</p>
+    {:else if friends.length}
       <div class="seg">
-        {#each suggestions as s (s)}<button type="button" aria-pressed={opponent === s} onclick={() => (opponent = s)}>{s}</button>{/each}
+        {#each friends as f (f.id)}
+          <button type="button" aria-pressed={opponent?.id === f.id} onclick={() => (opponent = f)}>{f.username}</button>
+        {/each}
       </div>
+    {:else if !error}
+      <p class="muted">
+        Non hai ancora amici. Aggiungili dal
+        {#if auth.user}<a href={auth.user.portalUrl}>portale</a>{:else}portale{/if}: poi potrai sfidarli qui.
+      </p>
     {/if}
     {#if !from.gameId}
       <h3>Griglia</h3>

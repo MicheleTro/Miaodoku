@@ -110,7 +110,7 @@
   {#if friends.length}
     <section class="card stack">
       <h2>Bilancio con gli amici</h2>
-      {#each friends as f (f.username)}
+      {#each friends as f (f.id)}
         <div class="row friend">
           <span class="av sm"><Sloth variant={avatar(f.username)} /></span>
           <b class="grow">{f.username}</b>
