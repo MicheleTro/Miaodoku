@@ -22,6 +22,16 @@ export const users = pgTable('users', {
   techniques: jsonb('techniques').$type<Record<string, number>>().notNull().default({}),
   seenTechniques: jsonb('seen_techniques').$type<string[]>().notNull().default([]),
   accessory: text('accessory').notNull().default('foglia'),
+  /** quadri del Percorso completati */
+  pathDone: integer('path_done').notNull().default(0),
+});
+
+// Quadri del Percorso già generati: uguali per tutti, si generano una volta sola.
+export const pathLevels = pgTable('path_levels', {
+  k: integer('k').primaryKey(),
+  n: integer('n').notNull(),
+  seed: bigint('seed', { mode: 'number' }).notNull(),
+  category: text('category').notNull(),
 });
 
 export const challenges = pgTable('challenges', {
@@ -53,6 +63,8 @@ export const games = pgTable('games', {
   lumi: boolean('lumi'),
   clean: boolean('clean'),
   points: integer('points'),
+  /** numero del quadro del Percorso (null per le sfide) */
+  pathK: integer('path_k'),
 });
 
 export type User = typeof users.$inferSelect;
@@ -109,6 +121,14 @@ CREATE TABLE IF NOT EXISTS games (
   lumi boolean,
   clean boolean,
   points integer
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS path_done integer NOT NULL DEFAULT 0;
+ALTER TABLE games ADD COLUMN IF NOT EXISTS path_k integer;
+CREATE TABLE IF NOT EXISTS path_levels (
+  k integer PRIMARY KEY,
+  n integer NOT NULL,
+  seed bigint NOT NULL,
+  category text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS games_user_idx ON games(user_id);
 CREATE INDEX IF NOT EXISTS games_challenge_idx ON games(challenge_id);

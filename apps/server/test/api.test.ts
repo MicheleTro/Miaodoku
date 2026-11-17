@@ -31,7 +31,7 @@ beforeAll(async () => {
   close = opened.close;
   app = await buildApp({
     db: opened.db, sessionSecret: SECRET, portalUrl: PORTAL, serviceId: 'bradoku', production: true,
-    portalJwks: createLocalJWKSet({ keys: [jwk] }), portal,
+    portalJwks: createLocalJWKSet({ keys: [jwk] }), portal, inlineGeneration: true,
   });
 });
 afterAll(async () => {
@@ -128,34 +128,51 @@ describe('gioco', () => {
 
   it('profilo con l’identità di whoru', async () => {
     const me = await call('GET', '/api/me', anna);
-    expect(me.body).toMatchObject({ id: 'sub-anna', username: 'anna', level: 1, xp: 0, streak: 0, lumi: 0 });
+    expect(me.body).toMatchObject({ id: 'sub-anna', username: 'anna', level: 1, xp: 0, streak: 0, lumi: 0, pathDone: 0 });
   });
 
-  it('partita libera: soluzione sbagliata rifiutata, giusta premiata', async () => {
-    const start = await call('POST', '/api/games', anna, { n: 6, difficulty: 'facile' });
+  it('niente più partita libera con griglia e difficoltà a scelta', async () => {
+    expect((await call('POST', '/api/games', anna, { n: 8, difficulty: 'facile' })).status).toBe(404);
+  });
+
+  it('percorso: stesso quadro per tutti, il contatore sale solo risolvendolo', async () => {
+    const info = await call('GET', '/api/path', anna);
+    expect(info.body).toMatchObject({ done: 0, next: { k: 1, n: 8, hard: false }, playingGameId: null });
+    expect((await call('GET', '/api/path', carla)).body.next).toEqual(info.body.next);
+
+    const start = await call('POST', '/api/path/play', anna);
     expect(start.status).toBe(200);
-    expect(start.body.level.rating.category).toBe('facile');
+    expect(start.body).toMatchObject({ pathK: 1, level: { n: 8, seed: info.body.next.seed } });
+    expect(start.body.introduce).toBeUndefined();
+    // di nuovo «gioca»: riprende la stessa partita
+    expect((await call('POST', '/api/path/play', anna)).body.gameId).toBe(start.body.gameId);
+    expect((await call('GET', '/api/path', anna)).body.playingGameId).toBe(start.body.gameId);
+
     const id = start.body.gameId;
-    expect((await call('POST', `/api/games/${id}/finish`, anna, { pieces: [0, 1, 2, 3, 4, 5], hints: 0, clean: true })).status).toBe(400);
+    expect((await call('POST', `/api/games/${id}/finish`, anna, { pieces: [0, 1, 2, 3, 4, 5, 6, 7], hints: 0, clean: true })).status).toBe(400);
     const fin = await call('POST', `/api/games/${id}/finish`, anna, { pieces: solve(start.body.level), hints: 0, clean: true });
     expect(fin.status).toBe(200);
     expect(fin.body.score.points).toBeGreaterThan(0);
     expect(fin.body.xp.after).toBe(fin.body.score.points);
     expect(fin.body.streak).toMatchObject({ value: 1, firstToday: true });
     expect(fin.body.newMedals).toContain('prima-partita');
+    expect(fin.body.path).toEqual({ k: 1, advanced: true, done: 1 });
     expect((await call('POST', `/api/games/${id}/finish`, anna, { pieces: solve(start.body.level), hints: 0, clean: true })).status).toBe(409);
+    expect((await call('GET', '/api/me', anna)).body.pathDone).toBe(1);
+    expect((await call('GET', '/api/path', anna)).body.next.k).toBe(2);
     // la partita di anna non è di carla
     expect((await call('GET', `/api/games/${id}`, carla)).status).toBe(404);
   });
 
   it('sfide solo tra amici del portale', async () => {
-    expect((await call('POST', '/api/challenges', anna, { opponent: 'sub-carla', n: 6, difficulty: 'facile' })).status).toBe(403);
-    expect((await call('POST', '/api/challenges', anna, { opponent: 'sub-anna', n: 6, difficulty: 'facile' })).status).toBe(400);
+    expect((await call('POST', '/api/challenges', anna, { opponent: 'sub-carla', n: 8 })).status).toBe(403);
+    expect((await call('POST', '/api/challenges', anna, { opponent: 'sub-anna', n: 8 })).status).toBe(400);
+    expect((await call('POST', '/api/challenges', anna, { opponent: 'sub-bruno', n: 6 })).status).toBe(400);
     expect((await call('GET', '/api/friends', anna)).body).toEqual([{ id: 'sub-bruno', username: 'bruno', wins: 0, losses: 0, draws: 0 }]);
   });
 
-  it('sfida dal livello appena risolto: vince chi fa più punti', async () => {
-    const start = await call('POST', '/api/games', anna, { n: 6, difficulty: 'medio' });
+  it('sfida dal quadro appena risolto: vince chi fa più punti', async () => {
+    const start = await call('POST', '/api/path/play', anna);
     const pieces = solve(start.body.level);
     await call('POST', `/api/games/${start.body.gameId}/finish`, anna, { pieces, hints: 0, clean: true });
     const ch = await call('POST', '/api/challenges', anna, { opponent: 'sub-bruno', fromGameId: start.body.gameId });
@@ -192,9 +209,9 @@ describe('gioco', () => {
   it('sfida a un amico che non ha mai aperto Bradoku', async () => {
     people['sub-dario'] = 'dario';
     friendships.add('sub-anna|sub-dario');
-    const ch = await call('POST', '/api/challenges', anna, { opponent: 'sub-dario', n: 5, difficulty: 'facile' });
+    const ch = await call('POST', '/api/challenges', anna, { opponent: 'sub-dario', n: 8, hard: true });
     expect(ch.status).toBe(200);
-    expect(ch.body).toMatchObject({ opponent: 'dario', opponentId: 'sub-dario' });
+    expect(ch.body).toMatchObject({ opponent: 'dario', opponentId: 'sub-dario', n: 8, hard: true });
   });
 
   it('accessori: solo quelli sbloccati', async () => {
@@ -206,7 +223,7 @@ describe('gioco', () => {
 describe('sviluppo (DEV_LOGIN, fuori produzione)', () => {
   it('accesso senza portale e utenti dev- amici tra loro', async () => {
     const opened = await openDatabase();
-    const dev = await buildApp({ db: opened.db, sessionSecret: SECRET, portalUrl: PORTAL, devLogin: true });
+    const dev = await buildApp({ db: opened.db, sessionSecret: SECRET, portalUrl: PORTAL, devLogin: true, inlineGeneration: true });
     const enter = async (user: string) => {
       const r = await dev.inject({ method: 'GET', url: `/api/auth/dev?user=${user}` });
       expect(r.statusCode).toBe(302);

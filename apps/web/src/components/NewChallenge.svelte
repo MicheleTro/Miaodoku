@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CategoryId } from '@bradoku/core';
+  import { SIZES } from '@bradoku/core';
   import { api, type ChallengeView, type Friend } from '../lib/api.js';
   import { auth } from '../lib/auth.svelte.js';
   import { ui, go, toast } from '../lib/state.svelte.js';
@@ -10,8 +10,8 @@
   // Si sfidano solo gli amici del portale whoru (decisione whoru #28): l'elenco arriva dal server.
   let friends = $state<Friend[] | null>(null);
   let opponent = $state<Friend | null>(null);
-  let n = $state(7);
-  let difficulty = $state<CategoryId>('medio');
+  let n = $state(8);
+  let hard = $state(false);
   let busy = $state(false);
   let error = $state('');
 
@@ -28,7 +28,7 @@
     busy = true;
     error = '';
     try {
-      const body = from.gameId ? { opponent: opponent.id, fromGameId: from.gameId } : { opponent: opponent.id, n, difficulty };
+      const body = from.gameId ? { opponent: opponent.id, fromGameId: from.gameId } : { opponent: opponent.id, n, hard };
       await api<ChallengeView>('POST', '/challenges', body);
       ui.challengeFrom = null;
       toast(`Sfida inviata a ${opponent.username}!`);
@@ -44,11 +44,11 @@
 <Modal onclose={() => !busy && (ui.challengeFrom = null)} label="Nuova sfida">
   <form class="stack" onsubmit={send}>
     <div class="row">
-      <h2 class="grow">{from.gameId ? 'Sfida su questo livello' : 'Nuova sfida'}</h2>
+      <h2 class="grow">{from.gameId ? 'Sfida su questo quadro' : 'Nuova sfida'}</h2>
       <button type="button" class="icon-btn" onclick={() => (ui.challengeFrom = null)} aria-label="Chiudi"><Icon name="close" /></button>
     </div>
     <p class="muted">
-      {from.gameId ? 'Il tuo risultato è già registrato: il tuo amico giocherà lo stesso identico livello.' : 'Giocate lo stesso livello, ognuno quando vuole. Vince chi fa più punti.'}
+      {from.gameId ? 'Il tuo risultato è già registrato: il tuo amico giocherà lo stesso identico quadro.' : 'Giocate lo stesso quadro, ognuno quando vuole. Vince chi fa più punti.'}
     </p>
     <h3>Chi sfidi?</h3>
     {#if friends === null}
@@ -68,17 +68,17 @@
     {#if !from.gameId}
       <h3>Griglia</h3>
       <div class="seg">
-        {#each [5, 6, 7, 8, 9, 10] as s (s)}<button type="button" aria-pressed={n === s} onclick={() => (n = s)}>{s}×{s}</button>{/each}
+        {#each SIZES as s (s)}<button type="button" aria-pressed={n === s} onclick={() => (n = s)}>{s}×{s}</button>{/each}
       </div>
       <h3>Difficoltà</h3>
       <div class="seg">
-        {#each [['facile', 'Facile'], ['medio', 'Medio'], ['difficile', 'Difficile'], ['esperto', 'Esperto'], ['diabolico', 'Diabolico']] as [id, name] (id)}
-          <button type="button" aria-pressed={difficulty === id} onclick={() => (difficulty = id as CategoryId)}>{name}</button>
-        {/each}
+        <button type="button" aria-pressed={!hard} onclick={() => (hard = false)}>Normale</button>
+        <button type="button" aria-pressed={hard} onclick={() => (hard = true)}>Difficile</button>
       </div>
+      {#if hard && n >= 11}<p class="muted">Una griglia grande e difficile può richiedere qualche secondo per essere preparata.</p>{/if}
     {/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
-    <button class="btn btn-berry btn-big btn-block" disabled={busy || !opponent}><Icon name="swords" /> Lancia la sfida</button>
+    <button class="btn btn-berry btn-big btn-block" disabled={busy || !opponent}><Icon name="swords" /> {busy ? 'Preparo la sfida…' : 'Lancia la sfida'}</button>
   </form>
 </Modal>
 

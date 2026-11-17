@@ -85,11 +85,11 @@
           <span class="av"><Sloth variant={avatar(c.opponent)} mood={c.outcome === 'win' ? 'sleepy' : 'happy'} /></span>
           <div class="grow">
             <b class="name">{c.opponent}</b>
-            <div class="meta"><span class="chip {c.difficulty}">{c.categoryName}</span> <span class="chip">{c.n}×{c.n}</span>{#if c.rematchOf}<span class="chip">rivincita</span>{/if}</div>
+            <div class="meta">{#if c.hard}<span class="chip hard">Difficile</span> {/if}<span class="chip">{c.n}×{c.n}</span>{#if c.rematchOf}<span class="chip">rivincita</span>{/if}</div>
             {#if c.status === 'completed'}
               <p class="score num">Tu {c.me.points} · {c.opponent} {c.them.points}</p>
             {:else if c.myTurn}
-              <p class="muted">{c.them.played ? `${c.opponent} ha già giocato: tocca a te!` : 'Ti aspetta un livello nuovo.'}</p>
+              <p class="muted">{c.them.played ? `${c.opponent} ha già giocato: tocca a te!` : 'Ti aspetta un quadro nuovo.'}</p>
             {:else}
               <p class="muted num">Hai fatto {c.me.points} punti in {fmt(c.me.durationMs)}. Aspetti {c.opponent}.</p>
             {/if}

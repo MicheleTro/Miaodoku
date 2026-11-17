@@ -11,18 +11,18 @@ export interface MedalDef {
 }
 
 export const MEDALS: MedalDef[] = [
-  { id: 'prima-partita', family: 'base', name: 'Prima partita', desc: 'Risolvi il primo livello.', glyph: '1' },
-  { id: 'mente-lucida', family: 'base', name: 'Mente lucida', desc: '10 livelli senza suggerimenti.', glyph: '10' },
-  { id: 'cento', family: 'base', name: 'Cento livelli', desc: 'Risolvi 100 livelli.', glyph: '100' },
-  { id: 'mille', family: 'base', name: 'Mille livelli', desc: 'Risolvi 1.000 livelli.', glyph: '1k' },
-  { id: 'livello-10', family: 'base', name: 'Livello 10', desc: 'Raggiungi il livello 10.', glyph: 'L10' },
-  { id: 'lampo', family: 'base', name: 'Lampo', desc: 'Risolvi un Difficile (o più) in metà del tempo di riferimento.', glyph: '⚡' },
-  { id: 'buon-vicino', family: 'tecniche', name: 'Buon vicino', desc: 'Senza suggerimenti, un livello che richiede Vicinato.', glyph: 'V' },
-  { id: 'coppia', family: 'tecniche', name: 'Coppia', desc: 'Senza suggerimenti, un livello che richiede una Coppia.', glyph: '2' },
-  { id: 'terna', family: 'tecniche', name: 'Terna', desc: 'Senza suggerimenti, un livello che richiede una Terna.', glyph: '3' },
-  { id: 'quaterna', family: 'tecniche', name: 'Quaterna', desc: 'Senza suggerimenti, un livello che richiede una Quaterna.', glyph: '4' },
-  { id: 'e-se', family: 'tecniche', name: 'E se…?', desc: 'Senza suggerimenti, un livello Diabolico (Ipotesi).', glyph: '?' },
-  { id: 'gigante-pulito', family: 'tecniche', name: 'Gigante pulito', desc: 'Un 10×10 senza errori né suggerimenti.', glyph: '10²' },
+  { id: 'prima-partita', family: 'base', name: 'Prima partita', desc: 'Risolvi il primo quadro.', glyph: '1' },
+  { id: 'mente-lucida', family: 'base', name: 'Mente lucida', desc: '10 quadri senza suggerimenti.', glyph: '10' },
+  { id: 'cento', family: 'base', name: 'Cento quadri', desc: 'Risolvi 100 quadri.', glyph: '100' },
+  { id: 'mille', family: 'base', name: 'Mille quadri', desc: 'Risolvi 1.000 quadri.', glyph: '1k' },
+  { id: 'livello-10', family: 'base', name: 'Grado 10', desc: 'Raggiungi il grado 10.', glyph: 'G10' },
+  { id: 'lampo', family: 'base', name: 'Lampo', desc: 'Risolvi un quadro Difficile in metà del tempo di riferimento.', glyph: '⚡' },
+  { id: 'buon-vicino', family: 'tecniche', name: 'Buon vicino', desc: 'Senza suggerimenti, un quadro che richiede Vicinato.', glyph: 'V' },
+  { id: 'coppia', family: 'tecniche', name: 'Coppia', desc: 'Senza suggerimenti, un quadro che richiede una Coppia.', glyph: '2' },
+  { id: 'terna', family: 'tecniche', name: 'Terna', desc: 'Senza suggerimenti, un quadro che richiede una Terna.', glyph: '3' },
+  { id: 'quaterna', family: 'tecniche', name: 'Quaterna', desc: 'Senza suggerimenti, un quadro che richiede una Quaterna.', glyph: '4' },
+  { id: 'e-se', family: 'tecniche', name: 'E se…?', desc: 'Senza suggerimenti, un quadro Diabolico (Ipotesi).', glyph: '?' },
+  { id: 'gigante-pulito', family: 'tecniche', name: 'Gigante pulito', desc: 'Un 10×10 o più grande senza errori né suggerimenti.', glyph: '10²' },
   { id: 'prima-sfida', family: 'sfide', name: 'Prima sfida', desc: 'Gioca la tua prima sfida.', glyph: 'S' },
   { id: 'prima-vittoria', family: 'sfide', name: 'Prima vittoria', desc: 'Vinci una sfida.', glyph: 'V1' },
   { id: 'rivincita', family: 'sfide', name: 'Rivincita', desc: 'Vinci la rivincita di una sfida persa.', glyph: '↺' },
@@ -67,7 +67,7 @@ export function earnedMedals(stats: PlayerStats, game?: GameContext): string[] {
   if (stats.cycles >= 3) out.push('tre-cicli');
   if (game) {
     const pure = game.hints === 0 && !game.lumi;
-    if (game.rating.tier >= 2 && game.durationMs <= game.parMs / 2) out.push('lampo');
+    if (game.rating.tier >= 3 && game.durationMs <= game.parMs / 2) out.push('lampo');
     if (pure) {
       const c = game.rating.counts;
       if (c.attack > 0) out.push('buon-vicino');
@@ -75,7 +75,7 @@ export function earnedMedals(stats: PlayerStats, game?: GameContext): string[] {
       if (c.confine3 > 0) out.push('terna');
       if (c.confine4 > 0) out.push('quaterna');
       if (c.contradiction > 0) out.push('e-se');
-      if (game.n === 10 && game.clean) out.push('gigante-pulito');
+      if (game.n >= 10 && game.clean) out.push('gigante-pulito');
     }
   }
   return out;

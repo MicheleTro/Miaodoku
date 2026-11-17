@@ -8,7 +8,6 @@
   import Result from './screens/Result.svelte';
   import Challenges from './screens/Challenges.svelte';
   import Profile from './screens/Profile.svelte';
-  import NewGame from './components/NewGame.svelte';
   import NewChallenge from './components/NewChallenge.svelte';
   import Sloth from './components/Sloth.svelte';
 
@@ -43,7 +42,6 @@
   <Profile />
 {/if}
 
-{#if ui.newGameOpen}<NewGame />{/if}
 {#if ui.challengeFrom}<NewChallenge />{/if}
 {#if ui.toast}<div class="toast" role="status">{ui.toast}</div>{/if}
 

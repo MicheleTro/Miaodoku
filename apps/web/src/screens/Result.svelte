@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ACCESSORIES } from '@bradoku/core';
-  import { ui, go } from '../lib/state.svelte.js';
+  import { ui, go, playPath } from '../lib/state.svelte.js';
   import Sloth from '../components/Sloth.svelte';
   import MedalBadge from '../components/MedalBadge.svelte';
   import Icon from '../components/Icon.svelte';
@@ -40,8 +40,10 @@
   </div>
 
   <section class="card stack">
-    <div class="row between"><span>Difficoltà ({r.level.categoryName} {r.level.n}×{r.level.n})</span><b class="num">{String(s.base).replace('.', ',')}</b></div>
-    <div class="row between"><span>Tempo {fmt(s.durationMs)} su {fmt(s.parMs)}</span><b class="num">{x(s.timeMult)}</b></div>
+    <div class="row between"><span>Difficoltà ({r.level.n}×{r.level.n}{r.level.hard ? ' · Difficile' : ''})</span><b class="num">{String(s.base).replace('.', ',')}</b></div>
+    <div class="row between">
+      <span>Velocità: {fmt(s.durationMs)} su {fmt(s.parMs)}{s.hard && s.speedPoints ? ' · conta doppio' : ''}</span><b class="num">+{s.speedPoints}</b>
+    </div>
     <div class="row between"><span>{s.cleanMult > 1 ? 'Partita pulita' : 'Qualche bradipo fuori posto'}</span><b class="num">{x(s.cleanMult)}</b></div>
     <div class="row between"><span>{s.hintMult >= 1.5 ? 'Senza suggerimenti' : 'Suggerimenti usati'}</span><b class="num">{x(s.hintMult)}</b></div>
     <hr />
@@ -52,7 +54,8 @@
         <span class="muted small num">{r.xp.xpInto}/{r.xp.xpNeed} XP · {r.xp.rank}</span>
       </div>
     </div>
-    {#if levelUp}<p class="banner leaf">Livello {r.xp.levelAfter}! Sei salito di livello.</p>{/if}
+    {#if levelUp}<p class="banner leaf">Grado {r.xp.levelAfter}! Sei salito di grado.</p>{/if}
+    {#if r.path?.advanced}<p class="banner sun">Quadro {r.path.k} completato · {r.path.done} nel Percorso</p>{/if}
     <p class="banner">
       <Icon name="flame" /> Serie: {r.streak.value} {r.streak.value === 1 ? 'giorno' : 'giorni'}
       {#if r.streak.lumiGained}· <b>+{r.streak.lumiGained} Lumi!</b>{:else if r.streak.firstToday}· oggi fatto{/if}
@@ -88,10 +91,10 @@
 
   <div class="stack">
     {#if !ch}
-      <button class="btn btn-berry btn-block" onclick={() => (ui.challengeFrom = { gameId: r.gameId })}><Icon name="swords" /> Sfida un amico su questo livello</button>
+      <button class="btn btn-berry btn-block" onclick={() => (ui.challengeFrom = { gameId: r.gameId })}><Icon name="swords" /> Sfida un amico su questo quadro</button>
     {/if}
     <div class="two">
-      <button class="btn btn-sun btn-block" onclick={() => (ui.newGameOpen = true)}><Icon name="play" /> Ancora</button>
+      <button class="btn btn-sun btn-block" onclick={playPath} disabled={ui.pathBusy}><Icon name="play" /> {ui.pathBusy ? 'Preparo…' : 'Prossimo quadro'}</button>
       <button class="btn btn-block" onclick={() => go(ch ? 'challenges' : 'home')}>{ch ? 'Sfide' : 'Home'}</button>
     </div>
   </div>
@@ -111,6 +114,7 @@
   .small { font-size: 0.85rem; }
   .banner { display: flex; align-items: center; gap: 6px; background: var(--berry-l); border: 2.5px solid var(--ink); border-radius: 12px; padding: 6px 10px; font-weight: 800; }
   .banner :global(svg) { width: 18px; height: 18px; color: var(--berry); }
+  .banner.sun { background: var(--sun-l); }
   .banner.leaf { background: var(--leaf-l); animation: pop 0.5s ease-out; }
   .vs { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; text-align: center; }
   .vs b { display: block; font-family: var(--f-display); font-size: 2.4rem; line-height: 1; }
