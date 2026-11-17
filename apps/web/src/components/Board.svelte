@@ -1,3 +1,10 @@
+<script lang="ts" module>
+  /** Cosa fa il trascinamento iniziato con un tocco: mette X, toglie X, oppure niente. */
+  export type DragMode = 'add' | 'remove' | null;
+  /** Due tocchi sulla stessa casella entro questo tempo sono un doppio tocco (bradipo). */
+  export const DOUBLE_TAP_MS = 320;
+</script>
+
 <script lang="ts">
   import Sloth from './Sloth.svelte';
 
@@ -14,10 +21,12 @@
   }: {
     n: number; regions: number[]; marks: number[]; conflicts?: Set<number>; emptyUnits?: Set<number>; highlight?: Highlight;
     accessory?: string; disabled?: boolean; celebrate?: boolean;
-    onpress: (i: number) => 'drag' | null; ondrag: (i: number) => void;
+    /** tocco su una casella; `double` = secondo tocco veloce sulla stessa casella */
+    onpress: (i: number, double: boolean) => DragMode; ondrag: (i: number, mode: 'add' | 'remove') => void;
   } = $props();
 
-  let dragging: number | null = null;
+  let dragging: { pointer: number; mode: 'add' | 'remove'; moved: boolean } | null = null;
+  let lastTap: { i: number; t: number } | null = null;
   let boardEl: HTMLDivElement;
 
   function cellFromPoint(x: number, y: number): number | null {
@@ -29,12 +38,20 @@
     const i = cellFromPoint(e.clientX, e.clientY);
     if (i === null) return;
     e.preventDefault();
-    dragging = onpress(i) === 'drag' ? e.pointerId : null;
+    const now = performance.now();
+    const double = !!lastTap && lastTap.i === i && now - lastTap.t < DOUBLE_TAP_MS;
+    lastTap = double ? null : { i, t: now };
+    const mode = onpress(i, double);
+    dragging = mode ? { pointer: e.pointerId, mode, moved: false } : null;
   }
   function move(e: PointerEvent) {
-    if (dragging !== e.pointerId) return;
+    if (!dragging || dragging.pointer !== e.pointerId) return;
     const i = cellFromPoint(e.clientX, e.clientY);
-    if (i !== null) ondrag(i);
+    if (i === null || (i === lastTap?.i && !dragging.moved)) return;
+    // un trascinamento non è un tocco: il prossimo tocco non conta come doppio
+    dragging.moved = true;
+    lastTap = null;
+    ondrag(i, dragging.mode);
   }
   const up = () => (dragging = null);
 

@@ -4,13 +4,14 @@
  */
 import { and, eq, or, desc, inArray } from 'drizzle-orm';
 import {
-  createBoard, isValidSolution, levelFromSeed, generateRated, computePoints, levelFromXp, rankFor, updateStreak,
-  visibleStreak, dayKey, earnedMedals, unlockedAccessories, compareResults, parTimeMs, TECHNIQUES, TIER,
-  type CategoryId, type RatedLevel, type PlayerStats,
+  createBoard, isValidSolution, levelFromSeed, computePoints, levelFromXp, rankFor, updateStreak, isHard,
+  visibleStreak, dayKey, earnedMedals, unlockedAccessories, compareResults, parTimeMs, TECHNIQUES,
+  type RatedLevel, type PlayerStats, type Want,
 } from '@bradoku/core';
 import type { DB } from './db/index.js';
 import type { Friend } from './portal.js';
-import { users, games, challenges, type User, type Game, type Challenge } from './db/schema.js';
+import { users, games, challenges, pathLevels, type User, type Game, type Challenge } from './db/schema.js';
+import { generate } from './levels.js';
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -20,25 +21,66 @@ export class HttpError extends Error {
 
 const randomSeed = (): number => Math.floor(Math.random() * 2 ** 31);
 
-/** Cache dei livelli: generare un 10×10 difficile può richiedere qualche centinaio di ms. */
+/** Cache dei livelli: rigenerare un 12×12 dal seme richiede qualche centinaio di ms. */
 const levelCache = new Map<string, RatedLevel>();
-export function levelFor(n: number, seed: number): RatedLevel {
-  const key = `${n}:${seed}`;
-  let lv = levelCache.get(key);
-  if (!lv) {
-    const fresh = levelFromSeed(n, seed);
-    if (!fresh) throw new HttpError(500, 'Livello non risolvibile');
-    lv = fresh;
-    if (levelCache.size > 500) levelCache.clear();
-    levelCache.set(key, lv);
-  }
+function remember(lv: RatedLevel): RatedLevel {
+  if (levelCache.size > 500) levelCache.clear();
+  levelCache.set(`${lv.n}:${lv.seed}`, lv);
   return lv;
 }
+export function levelFor(n: number, seed: number): RatedLevel {
+  const lv = levelCache.get(`${n}:${seed}`);
+  if (lv) return lv;
+  const fresh = levelFromSeed(n, seed);
+  if (!fresh) throw new HttpError(500, 'Livello non risolvibile');
+  return remember(fresh);
+}
 
-export function newLevel(n: number, difficulty: CategoryId): RatedLevel {
-  const lv = generateRated(n, randomSeed(), difficulty);
-  levelCache.set(`${n}:${lv.seed}`, lv);
-  return lv;
+/** Livello nuovo per una sfida (generato nel worker: può richiedere qualche secondo). */
+export async function newLevel(n: number, want: Want): Promise<RatedLevel> {
+  return remember(await generate({ kind: 'want', n, seed: randomSeed(), want }));
+}
+
+// ---- Percorso: quadri uguali per tutti, generati una volta sola e salvati
+
+const pathInFlight = new Map<number, Promise<RatedLevel>>();
+
+export function pathLevelFor(db: DB, k: number): Promise<RatedLevel> {
+  let p = pathInFlight.get(k);
+  if (p) return p;
+  p = (async () => {
+    const [row] = await db.select().from(pathLevels).where(eq(pathLevels.k, k));
+    if (row) return levelFor(row.n, row.seed);
+    const lv = remember(await generate({ kind: 'path', k }));
+    await db.insert(pathLevels).values({ k, n: lv.n, seed: lv.seed, category: lv.rating.category }).onConflictDoNothing();
+    return lv;
+  })().finally(() => pathInFlight.delete(k));
+  pathInFlight.set(k, p);
+  return p;
+}
+
+/** Prepara in anticipo il quadro k, così quando arriva il giocatore è già pronto. */
+export function prefetchPath(db: DB, k: number): void {
+  pathLevelFor(db, k).catch((e) => console.warn(`Quadro ${k} non preparato: ${(e as Error).message}`));
+}
+
+export async function pathInfo(db: DB, u: User) {
+  const k = u.pathDone + 1;
+  const lv = await pathLevelFor(db, k);
+  prefetchPath(db, k + 1);
+  const [playing] = await db.select({ id: games.id }).from(games).where(and(eq(games.userId, u.id), eq(games.pathK, k), eq(games.status, 'playing')));
+  return { done: u.pathDone, next: { k, n: lv.n, seed: lv.seed, hard: isHard(lv.rating.category) }, playingGameId: playing?.id ?? null };
+}
+
+/** Gioca il prossimo quadro del Percorso (riprende la partita se è già iniziata). */
+export async function playPath(db: DB, u: User) {
+  const k = u.pathDone + 1;
+  const [playing] = await db.select().from(games).where(and(eq(games.userId, u.id), eq(games.pathK, k), eq(games.status, 'playing')));
+  if (playing) return resumeGame(db, u, playing.id);
+  const lv = await pathLevelFor(db, k);
+  prefetchPath(db, k + 1);
+  const [g] = await db.insert(games).values({ userId: u.id, pathK: k, n: lv.n, difficulty: lv.rating.category, seed: lv.seed }).returning();
+  return gamePayload(u, g!, lv);
 }
 
 function stats(u: User): PlayerStats {
@@ -86,6 +128,7 @@ export async function profile(db: DB, u: User) {
     seenTechniques: u.seenTechniques,
     accessory: u.accessory,
     accessories: unlockedAccessories(lv.level, u.medals),
+    pathDone: u.pathDone,
     stats: stats(u),
     challengesToPlay: myTurn,
   };
@@ -99,6 +142,7 @@ export function publicLevel(lv: RatedLevel) {
     rating: {
       category: lv.rating.category,
       categoryName: lv.rating.categoryName,
+      hard: isHard(lv.rating.category),
       score: lv.rating.score,
       steps: lv.rating.steps,
       counts: lv.rating.counts,
@@ -108,35 +152,24 @@ export function publicLevel(lv: RatedLevel) {
   };
 }
 
-/** Tecnica da presentare con il coach: la più difficile del livello che il giocatore non ha ancora visto. */
-function techniqueToIntroduce(u: User, lv: RatedLevel): string | null {
-  const needed = TECHNIQUES.filter((t) => lv.rating.counts[t.id] > 0 && TIER[t.id] >= TIER.confine1).map((t) => t.id);
-  const fresh = needed.filter((t) => !u.seenTechniques.includes(t));
-  return fresh.at(-1) ?? null;
+function gamePayload(u: User, g: Game, lv: RatedLevel) {
+  return {
+    gameId: g.id, challengeId: g.challengeId, pathK: g.pathK, startedAt: g.startedAt.toISOString(), serverNow: new Date().toISOString(),
+    level: publicLevel(lv), lumiAvailable: g.challengeId ? 0 : u.lumi,
+  };
 }
 
-async function gamePayload(db: DB, u: User, g: Game, lv: RatedLevel, introduce: string | null) {
-  return { gameId: g.id, challengeId: g.challengeId, startedAt: g.startedAt.toISOString(), serverNow: new Date().toISOString(), level: publicLevel(lv), introduce, lumiAvailable: g.challengeId ? 0 : u.lumi };
-}
-
-export async function startGame(db: DB, u: User, opts: { n: number; difficulty: CategoryId; challenge?: Challenge }) {
-  const lv = opts.challenge ? levelFor(opts.challenge.n, opts.challenge.seed) : newLevel(opts.n, opts.difficulty);
-  const introduce = techniqueToIntroduce(u, lv);
-  if (introduce) {
-    await db.update(users).set({ seenTechniques: [...u.seenTechniques, introduce] }).where(eq(users.id, u.id));
-  }
-  const [g] = await db
-    .insert(games)
-    .values({ userId: u.id, challengeId: opts.challenge?.id ?? null, n: lv.n, difficulty: opts.challenge?.difficulty ?? opts.difficulty, seed: lv.seed })
-    .returning();
-  return gamePayload(db, u, g!, lv, introduce);
+async function startChallengeGame(db: DB, u: User, c: Challenge) {
+  const lv = levelFor(c.n, c.seed);
+  const [g] = await db.insert(games).values({ userId: u.id, challengeId: c.id, n: lv.n, difficulty: c.difficulty, seed: lv.seed }).returning();
+  return gamePayload(u, g!, lv);
 }
 
 export async function resumeGame(db: DB, u: User, gameId: number) {
   const [g] = await db.select().from(games).where(and(eq(games.id, gameId), eq(games.userId, u.id)));
   if (!g) throw new HttpError(404, 'Partita non trovata');
   if (g.status !== 'playing') throw new HttpError(409, 'Partita già conclusa');
-  return gamePayload(db, u, g, levelFor(g.n, g.seed), null);
+  return gamePayload(u, g, levelFor(g.n, g.seed));
 }
 
 export interface FinishInput {
@@ -158,7 +191,8 @@ export async function finishGame(db: DB, userId: string, gameId: number, input: 
 
   const now = new Date();
   const durationMs = Math.max(1000, now.getTime() - g.startedAt.getTime());
-  const score = computePoints({ rating: lv.rating, durationMs, hints: input.hints, clean: input.clean });
+  const score = computePoints({ rating: lv.rating, durationMs, hints: input.hints, clean: input.clean, hard: isHard(lv.rating.category) });
+  const pathAdvanced = g.pathK !== null && g.pathK === before.pathDone + 1;
   const pure = input.hints === 0 && !lumiUsed;
   const streak = updateStreak({ streak: before.streak, lastPlayDay: before.lastPlayDay, cycles: before.cycles }, dayKey(now));
 
@@ -176,6 +210,7 @@ export async function finishGame(db: DB, userId: string, gameId: number, input: 
     lumi: before.lumi - (lumiUsed ? 1 : 0) + streak.lumiGained,
     challengesPlayed: before.challengesPlayed + (g.challengeId ? 1 : 0),
     techniques,
+    pathDone: before.pathDone + (pathAdvanced ? 1 : 0),
   };
   const ctx = { n: lv.n, rating: lv.rating, hints: input.hints, lumi: lumiUsed, clean: input.clean, durationMs, parMs: score.parMs };
   const newMedals = earnedMedals(stats(after), ctx).filter((m) => !before.medals.includes(m));
@@ -187,6 +222,7 @@ export async function finishGame(db: DB, userId: string, gameId: number, input: 
     .set({
       xp: after.xp, solved: after.solved, noHintSolved: after.noHintSolved, streak: after.streak, lastPlayDay: after.lastPlayDay,
       cycles: after.cycles, lumi: after.lumi, challengesPlayed: after.challengesPlayed, techniques: after.techniques, medals: after.medals,
+      pathDone: after.pathDone,
     })
     .where(eq(users.id, userId));
 
@@ -197,6 +233,7 @@ export async function finishGame(db: DB, userId: string, gameId: number, input: 
   const finalUser = await getUser(db, userId);
   const accAfter = unlockedAccessories(levelFromXp(finalUser.xp).level, finalUser.medals);
   const challengeMedals = finalUser.medals.filter((m) => !after.medals.includes(m));
+  if (pathAdvanced) prefetchPath(db, after.pathDone + 2);
 
   return {
     score: { ...score, durationMs },
@@ -206,7 +243,8 @@ export async function finishGame(db: DB, userId: string, gameId: number, input: 
     newMedals: [...newMedals, ...challengeMedals],
     newAccessories: accAfter.filter((a) => !accBefore.includes(a)),
     challenge: challenge ? await challengeView(db, userId, challenge) : null,
-    level: { n: lv.n, seed: lv.seed, category: lv.rating.category, categoryName: lv.rating.categoryName },
+    level: { n: lv.n, seed: lv.seed, category: lv.rating.category, categoryName: lv.rating.categoryName, hard: isHard(lv.rating.category) },
+    path: g.pathK !== null ? { k: g.pathK, advanced: pathAdvanced, done: after.pathDone } : null,
     gameId: g.id,
   };
 }
@@ -272,6 +310,8 @@ export async function challengeView(db: DB, me: string, c: Challenge, names?: Ma
     n: c.n,
     difficulty: c.difficulty,
     categoryName: lv.rating.categoryName,
+    hard: isHard(lv.rating.category),
+    seed: c.seed,
     techniques: lv.rating.counts,
     status: c.status,
     myTurn: c.status === 'open' && !mine.played,
@@ -294,7 +334,7 @@ export async function listChallenges(db: DB, me: string) {
  * Nuova sfida verso un amico già verificato dal portale (`opponent` arriva da Portal.check, mai dal
  * browser). L'amico potrebbe non aver mai aperto Bradoku: la sua riga si crea qui.
  */
-export async function createChallenge(db: DB, me: User, input: { opponent: Friend; n?: number; difficulty?: CategoryId; fromGameId?: number; rematchOf?: number }) {
+export async function createChallenge(db: DB, me: User, input: { opponent: Friend; n?: number; want?: Want; fromGameId?: number; rematchOf?: number }) {
   if (input.opponent.sub === me.id) throw new HttpError(400, 'Non puoi sfidare te stesso');
   await rememberUser(db, input.opponent);
   const opp = { id: input.opponent.sub };
@@ -308,10 +348,10 @@ export async function createChallenge(db: DB, me: User, input: { opponent: Frien
     await db.update(users).set({ challengesPlayed: me.challengesPlayed + 1 }).where(eq(users.id, me.id));
     return challengeView(db, me.id, c!);
   }
-  const n = input.n ?? 7;
-  const difficulty = input.difficulty ?? 'medio';
-  const lv = newLevel(n, difficulty);
-  const [c] = await db.insert(challenges).values({ creatorId: me.id, opponentId: opp.id, n, difficulty, seed: lv.seed, rematchOf: input.rematchOf ?? null }).returning();
+  const n = input.n ?? 8;
+  const want = input.want ?? 'normale';
+  const lv = await newLevel(n, want);
+  const [c] = await db.insert(challenges).values({ creatorId: me.id, opponentId: opp.id, n, difficulty: want, seed: lv.seed, rematchOf: input.rematchOf ?? null }).returning();
   return challengeView(db, me.id, c!);
 }
 
@@ -327,12 +367,14 @@ export async function playChallenge(db: DB, me: User, id: number) {
   const [existing] = await db.select().from(games).where(and(eq(games.challengeId, c.id), eq(games.userId, me.id)));
   if (existing?.status === 'done') throw new HttpError(409, 'Hai già giocato questa sfida');
   if (existing) return resumeGame(db, me, existing.id);
-  return startGame(db, me, { n: c.n, difficulty: c.difficulty as CategoryId, challenge: c });
+  return startChallengeGame(db, me, c);
 }
 
 /** Rivincita: `opponent` è l'altro giocatore della sfida, verificato di nuovo come amico dal chiamante. */
 export async function rematch(db: DB, me: User, c: Challenge, opponent: Friend) {
-  return createChallenge(db, me, { opponent, n: c.n, difficulty: c.difficulty as CategoryId, rematchOf: c.id });
+  // stessa griglia e stessa fascia (normale o difficile) della sfida originale
+  const want: Want = isHard(levelFor(c.n, c.seed).rating.category) ? 'difficile+' : 'normale';
+  return createChallenge(db, me, { opponent, n: c.n, want, rematchOf: c.id });
 }
 
 export const otherPlayer = (c: Challenge, me: string): string => (c.creatorId === me ? c.opponentId : c.creatorId);

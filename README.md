@@ -1,7 +1,7 @@
 # Bradoku
 
 Puzzle logico: **un bradipo per riga, per colonna e per regione colorata; due bradipi non si toccano, nemmeno in diagonale.**
-Ogni livello ha una sola soluzione, raggiungibile con la logica. Si gioca in **partita libera** o in **sfida** con gli amici.
+Ogni quadro ha una sola soluzione, raggiungibile con la logica. Si gioca nel **Percorso** (quadri uguali per tutti) o in **sfida** con gli amici.
 
 Monorepo pnpm con la stessa struttura del Paroliere:
 
@@ -82,15 +82,26 @@ Il container gira come utente `node`, senza privilegi.
 
 ## Regole di gioco implementate
 
-- **Punteggio**: `Punti = round(D × (1 + 0,3·T) × (1 + 0,2·E) × A)` — D difficoltà dell'engine, T bonus tempo
-  (tempo di riferimento = 15 s per passo del risolutore), E partita pulita, A suggerimenti (×1,5 senza; −0,25 ciascuno, minimo ×0,4).
-  Il server misura il tempo, rigenera il livello dal seme e verifica la soluzione.
-- **XP e livelli**: ogni punto è un XP; per salire dal livello n servono 60 × n^1,4 XP. Ranghi: Germoglio, Ramo, Chioma, Foresta.
+- **Comandi**: un tocco mette la X; doppio tocco mette il bradipo; un tocco (dopo una pausa) su una X la toglie,
+  su un bradipo lo toglie. Trascinando dopo aver messo una X se ne mettono altre; trascinando dopo averne tolta una
+  si tolgono a catena tutte quelle toccate. Niente X automatiche.
+- **Percorso** (al posto della partita libera): una sequenza di quadri uguale per tutti. Griglia (da 8×8 a 12×12),
+  difficoltà e seme dipendono solo dal numero del quadro (`packages/core/src/path.ts`) e si vedono prima di giocare.
+  I primi 10 quadri salgono piano (8×8 facili → primo difficile al 10); poi ondate di 6–7 quadri misti e uno
+  difficile. Il 12×12 compare dal quadro 46 (11×11 dal 26). La stella in alto conta i quadri completati.
+  Ogni quadro si genera una volta sola, in un worker thread, e si salva nella tabella `path_levels`; il successivo
+  si prepara in anticipo.
+- **Etichetta «Difficile»**: solo per i quadri Esperto o Diabolico (Terne, Quaterne, Ipotesi); gli altri non hanno
+  etichetta. Vale anche nelle sfide, dove si sceglie griglia 8–12 e Normale/Difficile.
+- **Punteggio**: `Velocità V = round(D × T × R)`, `Punti = round((D + V) × (1 + 0,2·E) × A)` — D difficoltà
+  dell'engine; T rapidità (0 al tempo di riferimento, 1 a metà; riferimento = 15 s per passo del risolutore);
+  R = 0,5, oppure 1 nei quadri difficili (la velocità conta doppio); E partita pulita; A suggerimenti
+  (×1,5 senza; −0,25 ciascuno, minimo ×0,4). Il server misura il tempo, rigenera il livello dal seme e verifica la soluzione.
+- **XP e gradi**: ogni punto è un XP (la «banca punti»); per salire dal grado n servono 60 × n^1,4 XP. Ranghi: Germoglio, Ramo, Chioma, Foresta.
 - **Serie di presenza**: una partita al giorno (ora di Roma); ogni 10 giorni di fila +2 **Lumi** (suggerimenti completi senza penalità, solo in partita libera).
 - **Aiuto a due passi**: prima la zona dove guardare, poi la spiegazione della tecnica. Gli errori si segnalano prima di tutto.
-- **Coach**: la prima volta che un livello richiede una tecnica nuova, il bradipo la presenta.
 - **Sfide** (aperte da subito): sullo stesso seme, ognuno quando vuole; vince il punteggio, poi meno suggerimenti, poi il tempo.
   Si può sfidare un amico sul livello appena risolto; rivincita con un tocco; bilancio con ogni amico. I Lumi non valgono.
-- **18 medaglie** (Base, Tecniche, Sfide, Serie) e **13 accessori** per i bradipi, sbloccati con livelli e medaglie.
+- **18 medaglie** (Base, Tecniche, Sfide, Serie) e **13 accessori** per i bradipi, sbloccati con gradi e medaglie.
 
 Il profilo è quello di whoru: nome e gruppi arrivano dal portale (vedi *Accesso*).

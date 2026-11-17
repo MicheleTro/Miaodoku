@@ -70,6 +70,8 @@ export interface Profile {
   seenTechniques: string[];
   accessory: string;
   accessories: string[];
+  /** quadri del Percorso completati */
+  pathDone: number;
   stats: { solved: number; noHintSolved: number; challengesPlayed: number; challengesWon: number; winStreak: number; cycles: number };
   challengesToPlay: number;
 }
@@ -78,18 +80,25 @@ export interface PublicLevel {
   n: number;
   seed: number;
   regions: number[];
-  rating: { category: CategoryId; categoryName: string; score: number; steps: number; counts: Record<TechniqueId, number>; hardestTechnique: TechniqueId };
+  rating: { category: CategoryId; categoryName: string; hard: boolean; score: number; steps: number; counts: Record<TechniqueId, number>; hardestTechnique: TechniqueId };
   parMs: number;
 }
 
 export interface GameStart {
   gameId: number;
   challengeId: number | null;
+  /** numero del quadro del Percorso (null per le sfide) */
+  pathK: number | null;
   startedAt: string;
   serverNow: string;
   level: PublicLevel;
-  introduce: TechniqueId | null;
   lumiAvailable: number;
+}
+
+export interface PathInfo {
+  done: number;
+  next: { k: number; n: number; seed: number; hard: boolean };
+  playingGameId: number | null;
 }
 
 export interface ChallengeResult {
@@ -106,8 +115,10 @@ export interface ChallengeView {
   opponentId: string;
   iCreated: boolean;
   n: number;
-  difficulty: CategoryId;
+  difficulty: string;
   categoryName: string;
+  hard: boolean;
+  seed: number;
   techniques: Record<TechniqueId, number>;
   status: 'open' | 'completed';
   myTurn: boolean;
@@ -119,14 +130,18 @@ export interface ChallengeView {
 }
 
 export interface FinishResult {
-  score: { base: number; parMs: number; timeFactor: number; timeMult: number; cleanMult: number; hintMult: number; points: number; durationMs: number };
+  score: {
+    base: number; parMs: number; timeFactor: number; speedPoints: number; speedRate: number; hard: boolean;
+    cleanMult: number; hintMult: number; points: number; durationMs: number;
+  };
   xp: { before: number; after: number; levelBefore: number; levelAfter: number; xpInto: number; xpNeed: number; rank: string };
   streak: { value: number; firstToday: boolean; lumiGained: number };
   lumi: number;
   newMedals: string[];
   newAccessories: string[];
   challenge: ChallengeView | null;
-  level: { n: number; seed: number; category: CategoryId; categoryName: string };
+  level: { n: number; seed: number; category: CategoryId; categoryName: string; hard: boolean };
+  path: { k: number; advanced: boolean; done: number } | null;
   gameId: number;
 }
 

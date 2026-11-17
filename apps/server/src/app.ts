@@ -12,13 +12,13 @@ import {
 } from './auth.js';
 import { devPortal, httpPortal, missingPortal, PortalUnavailableError, type Portal } from './portal.js';
 import {
-  HttpError, getUser, profile, startGame, resumeGame, finishGame, listChallenges, createChallenge, playChallenge,
+  HttpError, getUser, profile, pathInfo, playPath, prefetchPath, resumeGame, finishGame, listChallenges, createChallenge, playChallenge,
   rematch, friends, getChallenge, challengeView, otherPlayer, rememberUser,
 } from './game.js';
-import { unlockedAccessories, levelFromXp } from '@bradoku/core';
+import { unlockedAccessories, levelFromXp, MIN_SIZE, MAX_SIZE } from '@bradoku/core';
+import { stopGenerator, useInlineGeneration } from './levels.js';
 
-const CATEGORY = z.enum(['facile', 'medio', 'difficile', 'esperto', 'diabolico']);
-const SIZE = z.number().int().min(5).max(10);
+const SIZE = z.number().int().min(MIN_SIZE).max(MAX_SIZE);
 const SUB = z.string().min(1).max(128);
 
 export interface AppOptions {
@@ -42,6 +42,8 @@ export interface AppOptions {
   portalJwks?: JWTVerifyGetKey;
   /** Per i test: amici al posto dell'API del portale. */
   portal?: Portal;
+  /** Genera i livelli sul thread principale invece che nel worker (test). */
+  inlineGeneration?: boolean;
 }
 
 declare module 'fastify' {
@@ -64,6 +66,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const portal: Portal =
     opts.portal ??
     (opts.portalServiceToken ? httpPortal(portalUrl, opts.portalServiceToken) : devLogin ? devPortal(db) : missingPortal());
+
+  if (opts.inlineGeneration) useInlineGeneration();
+  app.addHook('onClose', async () => stopGenerator());
+  // il primo quadro del Percorso pronto prima che arrivi qualcuno
+  app.addHook('onReady', async () => prefetchPath(db, 1));
 
   if (opts.corsOrigin?.length) await app.register(cors, { origin: opts.corsOrigin, credentials: true });
 
@@ -139,18 +146,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return profile(db, { ...u, accessory });
   });
 
+  // ---- Percorso: quadri uguali per tutti, griglia e difficoltà decise dal gioco
+  app.get('/api/path', async (req) => pathInfo(db, await getUser(db, await userId(req))));
+  app.post('/api/path/play', async (req) => playPath(db, await getUser(db, await userId(req))));
+
   // ---- partite
-  app.post('/api/games', async (req) => {
-    const u = await getUser(db, await userId(req));
-    const { n, difficulty } = z.object({ n: SIZE, difficulty: CATEGORY }).parse(req.body);
-    return startGame(db, u, { n, difficulty });
-  });
 
   app.get('/api/games/:id', async (req) => resumeGame(db, await getUser(db, await userId(req)), idParam(req)));
 
   app.post('/api/games/:id/finish', async (req) => {
     const body = z
-      .object({ pieces: z.array(z.number().int()).max(10), hints: z.number().int().min(0).max(999), lumi: z.boolean().default(false), clean: z.boolean() })
+      .object({ pieces: z.array(z.number().int()).max(MAX_SIZE), hints: z.number().int().min(0).max(999), lumi: z.boolean().default(false), clean: z.boolean() })
       .parse(req.body);
     return finishGame(db, await userId(req), idParam(req), body);
   });
@@ -160,11 +166,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.post('/api/challenges', async (req) => {
     const u = await getUser(db, await userId(req));
-    const body = z.object({ opponent: SUB, n: SIZE.optional(), difficulty: CATEGORY.optional(), fromGameId: z.number().int().optional() }).parse(req.body);
+    const body = z.object({ opponent: SUB, n: SIZE.optional(), hard: z.boolean().optional(), fromGameId: z.number().int().optional() }).parse(req.body);
     if (body.opponent === u.id) throw new HttpError(400, 'Non puoi sfidare te stesso');
     const friend = await portal.check(u.id, body.opponent);
     if (!friend) throw new HttpError(403, 'Puoi sfidare solo i tuoi amici del portale');
-    return createChallenge(db, u, { ...body, opponent: friend });
+    return createChallenge(db, u, { opponent: friend, n: body.n, want: body.hard ? 'difficile+' : 'normale', fromGameId: body.fromGameId });
   });
 
   app.get('/api/challenges/:id', async (req) => {

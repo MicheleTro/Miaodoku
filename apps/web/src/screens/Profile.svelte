@@ -20,7 +20,7 @@
   async function wear(id: string) {
     if (!p.accessories.includes(id)) {
       const a = ACCESSORIES.find((x) => x.id === id)!;
-      const how = 'level' in a.unlock ? `Si sblocca al livello ${a.unlock.level}` : `Si sblocca con la medaglia «${MEDALS.find((m) => m.id === (a.unlock as { medal: string }).medal)?.name}»`;
+      const how = 'level' in a.unlock ? `Si sblocca al grado ${a.unlock.level}` : `Si sblocca con la medaglia «${MEDALS.find((m) => m.id === (a.unlock as { medal: string }).medal)?.name}»`;
       return toast(how);
     }
     ui.profile = await api<Profile>('PUT', '/me/accessory', { accessory: id });
@@ -38,14 +38,14 @@
     <span class="me"><Sloth variant={0} accessory={p.accessory} mood="happy" /></span>
     <div class="grow">
       <h2>{p.username}</h2>
-      <p class="muted">{p.rank} · livello <b class="num">{p.level}</b></p>
+      <p class="muted">{p.rank} · grado <b class="num">{p.level}</b> · <b class="num">{p.pathDone}</b> quadri nel Percorso</p>
       <div class="xpbar"><i style="width:{(p.xpInto / p.xpNeed) * 100}%"></i></div>
       <p class="muted small num">{p.xpInto}/{p.xpNeed} XP · {p.xp} XP in tutto</p>
     </div>
   </section>
 
   <section class="tiles">
-    <div class="tile"><b class="num">{p.stats.solved}</b><span>livelli risolti</span></div>
+    <div class="tile"><b class="num">{p.stats.solved}</b><span>quadri risolti</span></div>
     <div class="tile"><b class="num">{p.stats.noHintSolved}</b><span>senza aiuti</span></div>
     <div class="tile"><b class="num">{p.stats.challengesWon}</b><span>sfide vinte</span></div>
     <div class="tile"><b class="num">{p.streak}</b><span>giorni di serie</span></div>
@@ -79,14 +79,14 @@
 
   <section class="card stack">
     <h2>Quaderno delle tecniche</h2>
-    <p class="muted">Ogni tecnica si apre la prima volta che un livello la richiede. Il numero conta le volte in cui ti è servita nei livelli risolti senza aiuti.</p>
+    <p class="muted">Ogni tecnica si apre la prima volta che un quadro la richiede. Il numero conta le volte in cui ti è servita nei quadri risolti senza aiuti.</p>
     {#each TECHNIQUES as t, i (t.id)}
       {@const seen = i < 2 || p.seenTechniques.includes(t.id) || (p.techniques[t.id] ?? 0) > 0}
       <div class="tech" class:locked={!seen}>
         <span class="tn num">{i + 1}</span>
         <div class="grow">
           <b>{seen ? t.name : 'Tecnica da scoprire'}</b>
-          <p class="muted small">{seen ? t.short : 'Gioca livelli più difficili per scoprirla.'}</p>
+          <p class="muted small">{seen ? t.short : 'Vai avanti nel Percorso per scoprirla.'}</p>
         </div>
         <span class="cnt num">{p.techniques[t.id] ?? 0}</span>
       </div>

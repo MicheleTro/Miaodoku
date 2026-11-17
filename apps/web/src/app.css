@@ -123,6 +123,7 @@ button { cursor: pointer; }
 .chip.difficile { background: #f9cda2; }
 .chip.esperto { background: #f7b8c8; }
 .chip.diabolico { background: #4a3a52; color: #fff; }
+.chip.hard { background: var(--berry); color: #fff; }
 .outline-text {
   color: #fff;
   text-shadow: -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink), 2px 2px 0 var(--ink), 0 4px 0 var(--ink);

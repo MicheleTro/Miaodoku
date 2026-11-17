@@ -1,14 +1,13 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import {
-    createBoard, findSolutions, emptyState, placePiece, nextDeduction, explainDeduction, hintZone, TECHNIQUES,
+    createBoard, findSolutions, emptyState, placePiece, nextDeduction, explainDeduction, hintZone,
     UNKNOWN, CROSS, PIECE, type Deduction,
   } from '@bradoku/core';
   import { api, storage, type FinishResult } from '../lib/api.js';
   import { ui, go, setCurrentGame, refreshProfile } from '../lib/state.svelte.js';
-  import Board from '../components/Board.svelte';
+  import Board, { type DragMode } from '../components/Board.svelte';
   import Icon from '../components/Icon.svelte';
-  import Modal from '../components/Modal.svelte';
   import Sloth from '../components/Sloth.svelte';
 
   const g = ui.game!;
@@ -33,8 +32,6 @@
   let clean = $state(restored?.clean ?? true);
   let undoStack: number[][] = [];
   let canUndo = $state(false);
-  let autoX = $state(storage.get('bradoku.autoX') !== 'no');
-  let intro = $state(g.introduce);
   let finishing = $state(false);
   let solved = $state(false);
   let error = $state('');
@@ -76,7 +73,6 @@
   function setPiece(i: number) {
     marks[i] = PIECE;
     if (!solution.has(i)) clean = false;
-    if (autoX) for (const j of board.sees[i]!) if (marks[j] === UNKNOWN) marks[j] = CROSS;
   }
 
   function changed() {
@@ -86,21 +82,31 @@
     checkWin();
   }
 
-  function onpress(i: number): 'drag' | null {
-    if (finishing || solved || intro) return null;
+  /**
+   * Un tocco: vuota → X (e trascinando si mettono altre X); X → vuota (e trascinando si tolgono a catena);
+   * bradipo → vuota. Doppio tocco: bradipo. Il doppio tocco completa il primo tocco, quindi un solo «Annulla».
+   */
+  let firstTapRemovedPiece = false;
+  function onpress(i: number, double: boolean): DragMode {
+    if (finishing || solved) return null;
+    if (double && !firstTapRemovedPiece) {
+      setPiece(i);
+      changed();
+      return null;
+    }
     pushUndo();
     const old = marks[i];
-    if (old === UNKNOWN) marks[i] = CROSS;
-    else if (old === CROSS) setPiece(i);
-    else marks[i] = UNKNOWN;
+    firstTapRemovedPiece = old === PIECE;
+    marks[i] = old === UNKNOWN ? CROSS : UNKNOWN;
     changed();
-    return marks[i] === CROSS ? 'drag' : null;
+    return old === UNKNOWN ? 'add' : old === CROSS ? 'remove' : null;
   }
-  function ondrag(i: number) {
-    if (marks[i] === UNKNOWN) {
-      marks[i] = CROSS;
-      save();
-    }
+  function ondrag(i: number, mode: 'add' | 'remove') {
+    if (finishing || solved) return;
+    if (mode === 'add' && marks[i] === UNKNOWN) marks[i] = CROSS;
+    else if (mode === 'remove' && marks[i] === CROSS) marks[i] = UNKNOWN;
+    else return;
+    save();
   }
   function undo() {
     const prev = undoStack.pop();
@@ -226,18 +232,14 @@
     }
   }
 
-  function toggleAutoX() {
-    autoX = !autoX;
-    storage.set('bradoku.autoX', autoX ? 'yes' : 'no');
-  }
-  const introTech = $derived(TECHNIQUES.find((t) => t.id === intro));
 </script>
 
 <main class="page play">
   <header class="top">
     <button class="icon-btn" onclick={() => go(isChallenge ? 'challenges' : 'home')} aria-label="Esci (la partita resta in sospeso)"><Icon name="back" /></button>
     <div class="grow title">
-      <span class="chip {g.level.rating.category}">{g.level.rating.categoryName}</span>
+      {#if g.pathK}<span class="chip">Quadro {g.pathK}</span>{/if}
+      {#if g.level.rating.hard}<span class="chip hard">Difficile</span>{/if}
       <span class="outline-text size">{n}×{n}</span>
       {#if isChallenge}<span class="chip vs">Sfida</span>{/if}
     </div>
@@ -246,7 +248,7 @@
 
   <div class="status row between">
     <span class="count outline-text num">{analysis.pieces}/{n} bradipi</span>
-    <button class="autox" aria-pressed={autoX} onclick={toggleAutoX}>X automatiche</button>
+    <span class="seed muted num">seme {g.level.seed}</span>
   </div>
 
   <div class="board-wrap">
@@ -278,21 +280,8 @@
     {/if}
     <button class="tool" onclick={reset} disabled={finishing}><Icon name="reset" /><span>Ricomincia</span></button>
   </nav>
-  <p class="help">Tocca: vuota → X → bradipo. Dopo una X trascina per segnarne altre.</p>
+  <p class="help">Tocco: X · doppio tocco: bradipo · tocca una X per toglierla. Trascina per mettere o togliere tante X.</p>
 </main>
-
-{#if intro && introTech}
-  <Modal label="Nuova tecnica" onclose={() => (intro = null)}>
-    <div class="intro">
-      <span class="coach big"><Sloth variant={5} accessory="occhiali" mood="happy" /></span>
-      <p class="kicker">Nuova tecnica in questo livello</p>
-      <h2>{introTech.name}</h2>
-      <p>{introTech.short}</p>
-      <p class="muted">Se ti blocchi, «Aiuto» ti mostra prima dove guardare e poi spiega il ragionamento.</p>
-      <button class="btn btn-sun btn-block" onclick={() => (intro = null)}>Ho capito, giochiamo!</button>
-    </div>
-  </Modal>
-{/if}
 
 <style>
   .play { gap: 10px; }
@@ -303,13 +292,11 @@
   .timer { font-size: 1.3rem; padding: 2px 12px; }
   .timer.over { background: var(--paper-2); }
   .count { font-family: var(--f-display); font-size: 1.2rem; }
-  .autox { border: 2.5px solid var(--ink); border-radius: 999px; background: var(--paper-2); padding: 2px 12px; font-weight: 800; font-size: 0.85rem; }
-  .autox[aria-pressed='true'] { background: var(--leaf-l); }
+  .seed { color: #fff; opacity: 0.8; font-size: 0.85rem; font-weight: 700; }
   .board-wrap { width: min(100%, calc(100dvh - 330px)); min-width: min(100%, 300px); margin: 0 auto; }
   .hint { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
   .hint h3 { font-size: 1.1rem; }
   .coach { width: 54px; height: 54px; flex: none; }
-  .coach.big { width: 96px; height: 96px; margin: 0 auto; animation: bob 1.6s ease-in-out infinite; }
   .tools { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
   .tool {
     display: flex; flex-direction: column; align-items: center; gap: 2px; border: 3px solid var(--ink); border-radius: 16px;
@@ -320,7 +307,4 @@
   .tool.sun { background: var(--sun-l); }
   .tool.lume { background: #fff3cf; color: var(--bark); }
   .help { color: #fff; text-align: center; font-size: 0.85rem; opacity: 0.85; }
-  .intro { display: flex; flex-direction: column; gap: 10px; text-align: center; }
-  .kicker { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; color: var(--bark); font-weight: 800; }
-  .intro h2 { font-size: 2rem; }
 </style>
