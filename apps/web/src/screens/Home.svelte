@@ -51,7 +51,6 @@
   <header class="hud">
     <button class="lvl" onclick={() => go('profile')} aria-label="{p.pathDone} livelli completati. Apri il profilo">
       <span class="star" title="Livelli del Percorso completati"><svg viewBox="0 0 50 50"><path d="M25 3l6.5 13.5 14.5 2-10.5 10 2.6 14.5L25 36l-13.1 7 2.6-14.5L4 18.5l14.5-2z" fill="#ffc93c" stroke="#22301f" stroke-width="3.5" stroke-linejoin="round" /></svg><b class="num">{p.pathDone}</b></span>
-      <span class="lvl-label outline-text">{p.pathDone === 1 ? 'livello' : 'livelli'}</span>
     </button>
     <span class="pill" title="Serie di presenza"><span class="ic flame"><Icon name="flame" /></span><span class="num">{p.streak}</span></span>
     {#if LUMI_ENABLED}
@@ -119,7 +118,6 @@
   .star { position: relative; width: 52px; height: 52px; flex: none; display: grid; place-items: center; z-index: 1; }
   .star svg { position: absolute; inset: 0; }
   .star b { position: relative; font-family: var(--f-display); font-size: 1.2rem; margin-top: 3px; }
-  .lvl-label { font-family: var(--f-display); font-size: 1.05rem; }
   .ic { width: 24px; height: 24px; display: grid; place-items: center; }
   .ic :global(svg) { width: 20px; height: 20px; }
   .flame { color: var(--berry); }
