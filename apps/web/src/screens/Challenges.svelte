@@ -89,7 +89,7 @@
             {#if c.status === 'completed'}
               <p class="score num">Tu {c.me.points} · {c.opponent} {c.them.points}</p>
             {:else if c.myTurn}
-              <p class="muted">{c.them.played ? `${c.opponent} ha già giocato: tocca a te!` : 'Ti aspetta un quadro nuovo.'}</p>
+              <p class="muted">{c.them.played ? `${c.opponent} ha già giocato: tocca a te!` : 'Ti aspetta un livello nuovo.'}</p>
             {:else}
               <p class="muted num">Hai fatto {c.me.points} punti in {fmt(c.me.durationMs)}. Aspetti {c.opponent}.</p>
             {/if}

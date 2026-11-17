@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { ACCESSORIES } from '@bradoku/core';
   import { ui, go, playPath } from '../lib/state.svelte.js';
   import Sloth from '../components/Sloth.svelte';
   import MedalBadge from '../components/MedalBadge.svelte';
   import Icon from '../components/Icon.svelte';
+  import { LUMI_ENABLED } from '../lib/features.js';
+  import { sfx } from '../lib/sound.js';
 
   const r = ui.result!;
   const s = r.score;
@@ -13,16 +15,38 @@
   let shown = $state(0);
   let barWidth = $state(levelUp ? 0 : Math.max(0, ((r.xp.xpInto - s.points) / r.xp.xpNeed) * 100));
 
+  // Suoni del risultato, uno dopo l'altro: conteggio, totale, poi le novità (grado, livello, medaglie, sfida)
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const later = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
+  let frame = 0;
+  onDestroy(() => {
+    timers.forEach(clearTimeout);
+    cancelAnimationFrame(frame);
+  });
+
   onMount(() => {
     const t0 = performance.now();
     const dur = 900;
     const step = (t: number) => {
       const k = Math.min(1, (t - t0) / dur);
-      shown = Math.round(s.points * (1 - Math.pow(1 - k, 3)));
-      if (k < 1) requestAnimationFrame(step);
+      const value = Math.round(s.points * (1 - Math.pow(1 - k, 3)));
+      if (value !== shown) sfx.tick(k);
+      shown = value;
+      if (k < 1) frame = requestAnimationFrame(step);
+      else sfx.total();
     };
-    requestAnimationFrame(step);
-    setTimeout(() => (barWidth = (r.xp.xpInto / r.xp.xpNeed) * 100), 400);
+    frame = requestAnimationFrame(step);
+    later(400, () => (barWidth = (r.xp.xpInto / r.xp.xpNeed) * 100));
+
+    let at = dur + 700;
+    const next = (fn: () => void) => {
+      later(at, fn);
+      at += 900;
+    };
+    if (ch?.status === 'completed') next(ch.outcome === 'win' ? sfx.fanfare : ch.outcome === 'draw' ? sfx.star : sfx.lose);
+    if (levelUp) next(sfx.fanfare);
+    if (r.path?.advanced) next(sfx.star);
+    if (r.newMedals.length || r.newAccessories.length) next(sfx.medal);
   });
 
   const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
@@ -55,10 +79,10 @@
       </div>
     </div>
     {#if levelUp}<p class="banner leaf">Grado {r.xp.levelAfter}! Sei salito di grado.</p>{/if}
-    {#if r.path?.advanced}<p class="banner sun">Quadro {r.path.k} completato · {r.path.done} nel Percorso</p>{/if}
+    {#if r.path?.advanced}<p class="banner sun">Livello {r.path.k} completato · {r.path.done} nel Percorso</p>{/if}
     <p class="banner">
       <Icon name="flame" /> Serie: {r.streak.value} {r.streak.value === 1 ? 'giorno' : 'giorni'}
-      {#if r.streak.lumiGained}· <b>+{r.streak.lumiGained} Lumi!</b>{:else if r.streak.firstToday}· oggi fatto{/if}
+      {#if LUMI_ENABLED && r.streak.lumiGained}· <b>+{r.streak.lumiGained} Lumi!</b>{:else if r.streak.firstToday}· oggi fatto{/if}
     </p>
   </section>
 
@@ -91,10 +115,10 @@
 
   <div class="stack">
     {#if !ch}
-      <button class="btn btn-berry btn-block" onclick={() => (ui.challengeFrom = { gameId: r.gameId })}><Icon name="swords" /> Sfida un amico su questo quadro</button>
+      <button class="btn btn-berry btn-block" onclick={() => (ui.challengeFrom = { gameId: r.gameId })}><Icon name="swords" /> Sfida un amico su questo livello</button>
     {/if}
     <div class="two">
-      <button class="btn btn-sun btn-block" onclick={playPath} disabled={ui.pathBusy}><Icon name="play" /> {ui.pathBusy ? 'Preparo…' : 'Prossimo quadro'}</button>
+      <button class="btn btn-sun btn-block" onclick={playPath} disabled={ui.pathBusy}><Icon name="play" /> {ui.pathBusy ? 'Preparo…' : 'Prossimo livello'}</button>
       <button class="btn btn-block" onclick={() => go(ch ? 'challenges' : 'home')}>{ch ? 'Sfide' : 'Home'}</button>
     </div>
   </div>

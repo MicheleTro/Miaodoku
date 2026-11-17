@@ -5,11 +5,18 @@
   import Scene from '../components/Scene.svelte';
   import Sloth from '../components/Sloth.svelte';
   import Icon from '../components/Icon.svelte';
+  import { LUMI_ENABLED } from '../lib/features.js';
+  import { sound } from '../lib/sound.js';
 
   const p = $derived(ui.profile!);
   let resume = $state<GameStart | null>(null);
   let path = $state<PathInfo | null>(null);
   let pathError = $state('');
+  let muted = $state(sound.muted);
+  function toggleSound() {
+    muted = !muted;
+    sound.setMuted(muted);
+  }
 
   async function loadPath() {
     pathError = '';
@@ -40,12 +47,15 @@
 
 <main class="page">
   <header class="hud">
-    <button class="lvl" onclick={() => go('profile')} aria-label="{p.pathDone} quadri completati; {p.xpInto} su {p.xpNeed} XP. Apri il profilo">
-      <span class="star" title="Quadri del Percorso completati"><svg viewBox="0 0 50 50"><path d="M25 3l6.5 13.5 14.5 2-10.5 10 2.6 14.5L25 36l-13.1 7 2.6-14.5L4 18.5l14.5-2z" fill="#ffc93c" stroke="#22301f" stroke-width="3.5" stroke-linejoin="round" /></svg><b class="num">{p.pathDone}</b></span>
+    <button class="lvl" onclick={() => go('profile')} aria-label="{p.pathDone} livelli completati; {p.xpInto} su {p.xpNeed} XP. Apri il profilo">
+      <span class="star" title="Livelli del Percorso completati"><svg viewBox="0 0 50 50"><path d="M25 3l6.5 13.5 14.5 2-10.5 10 2.6 14.5L25 36l-13.1 7 2.6-14.5L4 18.5l14.5-2z" fill="#ffc93c" stroke="#22301f" stroke-width="3.5" stroke-linejoin="round" /></svg><b class="num">{p.pathDone}</b></span>
       <span class="xpbar" title="XP verso il prossimo rango"><i style="width:{(p.xpInto / p.xpNeed) * 100}%"></i></span>
     </button>
     <span class="pill" title="Serie di presenza"><span class="ic flame"><Icon name="flame" /></span><span class="num">{p.streak}</span></span>
-    <span class="pill" title="Lumi: suggerimenti senza penalità"><span class="ic lume"><Icon name="lume" /></span><span class="num">{p.lumi}</span></span>
+    {#if LUMI_ENABLED}
+      <span class="pill" title="Lumi: suggerimenti senza penalità"><span class="ic lume"><Icon name="lume" /></span><span class="num">{p.lumi}</span></span>
+    {/if}
+    <button class="icon-btn sound" data-sfx onclick={toggleSound} aria-pressed={!muted} aria-label={muted ? 'Accendi i suoni' : 'Spegni i suoni'}><Icon name={muted ? 'mute' : 'sound'} /></button>
   </header>
 
   <Scene accessory={p.accessory} mood={p.playedToday ? 'happy' : 'sleepy'} />
@@ -62,21 +72,18 @@
   {/if}
 
   <div class="actions">
-    <section class="card quadro rise" aria-label="Prossimo quadro del Percorso">
+    <section class="card livello rise" aria-label="Prossimo livello del Percorso">
       {#if path}
-        <div class="row between">
-          <span class="kicker">Percorso</span>
-          <span class="muted num small">seme {path.next.seed}</span>
-        </div>
+        <span class="kicker">Percorso</span>
         <div class="row">
-          <b class="qn outline-text num">Quadro {path.next.k}</b>
+          <b class="qn outline-text num">Livello {path.next.k}</b>
           <span class="chip num">{path.next.n}×{path.next.n}</span>
           {#if path.next.hard}<span class="chip hard">Difficile</span>{/if}
         </div>
       {:else if pathError}
         <p class="error">{pathError} <button class="link dark" onclick={loadPath}>Riprova</button></p>
       {:else}
-        <p class="muted"><span class="mini"><Sloth variant={3} mood="sleepy" /></span> Preparo il prossimo quadro…</p>
+        <p class="muted"><span class="mini"><Sloth variant={3} mood="sleepy" /></span> Preparo il prossimo livello…</p>
       {/if}
     </section>
     <button class="btn btn-sun btn-big btn-block" onclick={playPath} disabled={ui.pathBusy || !path}>
@@ -93,7 +100,9 @@
 
   <footer class="rank">
     <span class="outline-text">{p.rank}</span> · {p.xpInto}/{p.xpNeed} XP verso il grado {p.level + 1}
-    <button class="link" onclick={() => toast('Ogni 10 giorni di fila ricevi 2 Lumi: suggerimenti completi senza penalità.')}>Cos'è un Lume?</button>
+    {#if LUMI_ENABLED}
+      <button class="link" onclick={() => toast('Ogni 10 giorni di fila ricevi 2 Lumi: suggerimenti completi senza penalità.')}>Cos'è un Lume?</button>
+    {/if}
   </footer>
 </main>
 
@@ -122,11 +131,10 @@
     position: absolute; top: -10px; right: -8px; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 13px;
     background: var(--sun); color: var(--ink); border: 3px solid var(--ink); font-size: 0.9rem; display: grid; place-items: center; text-shadow: none;
   }
-  .quadro { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; }
-  .quadro .row { gap: 8px; flex-wrap: wrap; }
+  .livello { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; }
+  .livello .row { gap: 8px; flex-wrap: wrap; }
   .kicker { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; color: var(--bark); font-weight: 800; }
   .qn { font-family: var(--f-display); font-size: 1.5rem; margin-right: auto; }
-  .small { font-size: 0.85rem; }
   .mini { width: 30px; height: 30px; display: inline-block; vertical-align: middle; animation: bob 0.8s ease-in-out infinite; }
   .link.dark { display: inline; color: inherit; }
   .rank { color: #fff; text-align: center; font-weight: 800; font-size: 0.95rem; }

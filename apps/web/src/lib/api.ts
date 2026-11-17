@@ -70,7 +70,7 @@ export interface Profile {
   seenTechniques: string[];
   accessory: string;
   accessories: string[];
-  /** quadri del Percorso completati */
+  /** livelli del Percorso completati */
   pathDone: number;
   stats: { solved: number; noHintSolved: number; challengesPlayed: number; challengesWon: number; winStreak: number; cycles: number };
   challengesToPlay: number;
@@ -87,7 +87,7 @@ export interface PublicLevel {
 export interface GameStart {
   gameId: number;
   challengeId: number | null;
-  /** numero del quadro del Percorso (null per le sfide) */
+  /** numero del livello del Percorso (null per le sfide) */
   pathK: number | null;
   startedAt: string;
   serverNow: string;

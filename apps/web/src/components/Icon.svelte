@@ -16,6 +16,8 @@
   {:else if name === 'trophy'}<path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4a3 3 0 0 0 4 4M16 6h4a3 3 0 0 1-4 4M12 13v4M8 21h8M9 17h6" />
   {:else if name === 'check'}<path d="M5 12l5 5 9-10" />
   {:else if name === 'plus'}<path d="M12 5v14M5 12h14" />
+  {:else if name === 'sound'}<path d="M4 9h4l5-4v14l-5-4H4z" /><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11" />
+  {:else if name === 'mute'}<path d="M4 9h4l5-4v14l-5-4H4z" /><path d="M16 9.5l5 5M21 9.5l-5 5" />
   {:else if name === 'logout'}<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" />
   {/if}
 </svg>

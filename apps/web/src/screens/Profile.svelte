@@ -6,6 +6,7 @@
   import Sloth from '../components/Sloth.svelte';
   import MedalBadge from '../components/MedalBadge.svelte';
   import Icon from '../components/Icon.svelte';
+  import { LUMI_ENABLED } from '../lib/features.js';
 
   const p = $derived(ui.profile!);
   onMount(() => refreshProfile().catch(() => {}));
@@ -38,18 +39,22 @@
     <span class="me"><Sloth variant={0} accessory={p.accessory} mood="happy" /></span>
     <div class="grow">
       <h2>{p.username}</h2>
-      <p class="muted">{p.rank} · grado <b class="num">{p.level}</b> · <b class="num">{p.pathDone}</b> quadri nel Percorso</p>
+      <p class="muted">{p.rank} · grado <b class="num">{p.level}</b> · <b class="num">{p.pathDone}</b> livelli nel Percorso</p>
       <div class="xpbar"><i style="width:{(p.xpInto / p.xpNeed) * 100}%"></i></div>
       <p class="muted small num">{p.xpInto}/{p.xpNeed} XP · {p.xp} XP in tutto</p>
     </div>
   </section>
 
   <section class="tiles">
-    <div class="tile"><b class="num">{p.stats.solved}</b><span>quadri risolti</span></div>
+    <div class="tile"><b class="num">{p.stats.solved}</b><span>livelli risolti</span></div>
     <div class="tile"><b class="num">{p.stats.noHintSolved}</b><span>senza aiuti</span></div>
     <div class="tile"><b class="num">{p.stats.challengesWon}</b><span>sfide vinte</span></div>
     <div class="tile"><b class="num">{p.streak}</b><span>giorni di serie</span></div>
-    <div class="tile"><b class="num">{p.lumi}</b><span>Lumi</span></div>
+    {#if LUMI_ENABLED}
+      <div class="tile"><b class="num">{p.lumi}</b><span>Lumi</span></div>
+    {:else}
+      <div class="tile"><b class="num">{p.pathDone}</b><span>Percorso</span></div>
+    {/if}
     <div class="tile"><b class="num">{p.medals.length}/{MEDALS.length}</b><span>medaglie</span></div>
   </section>
 
@@ -79,7 +84,7 @@
 
   <section class="card stack">
     <h2>Quaderno delle tecniche</h2>
-    <p class="muted">Ogni tecnica si apre la prima volta che un quadro la richiede. Il numero conta le volte in cui ti è servita nei quadri risolti senza aiuti.</p>
+    <p class="muted">Ogni tecnica si apre la prima volta che un livello la richiede. Il numero conta le volte in cui ti è servita nei livelli risolti senza aiuti.</p>
     {#each TECHNIQUES as t, i (t.id)}
       {@const seen = i < 2 || p.seenTechniques.includes(t.id) || (p.techniques[t.id] ?? 0) > 0}
       <div class="tech" class:locked={!seen}>

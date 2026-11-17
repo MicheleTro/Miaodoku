@@ -8,7 +8,7 @@ export const ui = $state({
   profile: null as Profile | null,
   game: null as GameStart | null,
   result: null as FinishResult | null,
-  /** si sta preparando il prossimo quadro del Percorso */
+  /** si sta preparando il prossimo livello del Percorso */
   pathBusy: false,
   challengeFrom: null as { gameId?: number } | null,
   toast: '' as string,
@@ -41,7 +41,7 @@ export function startPlaying(g: GameStart): void {
   go('play');
 }
 
-/** Gioca il prossimo quadro del Percorso (o riprende quello in corso). */
+/** Gioca il prossimo livello del Percorso (o riprende quello in corso). */
 export async function playPath(): Promise<void> {
   if (ui.pathBusy) return;
   ui.pathBusy = true;
