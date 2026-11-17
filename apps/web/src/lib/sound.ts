@@ -1,7 +1,8 @@
 /**
  * Effetti sonori, sintetizzati con Web Audio: nessun file da scaricare, nessuna licenza.
  * Ogni suono è breve e morbido; si possono spegnere (preferenza salvata nel browser).
- * Il browser permette l'audio solo dopo un gesto dell'utente: il contesto si crea al primo tocco.
+ * Il browser permette l'audio solo dopo un gesto dell'utente: il contesto si crea al primo tocco e si
+ * rifà al primo tocco dopo che la pagina è stata in secondo piano (telefono bloccato, cambio di app).
  */
 import { storage } from './api.js';
 
@@ -10,24 +11,70 @@ let muted = storage.get(MUTE_KEY) === '1';
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let noiseBuf: AudioBuffer | null = null;
+/**
+ * Il contesto va rifatto al prossimo tocco: la pagina è stata in secondo piano, o il sistema l'ha
+ * interrotto (iOS: stato «interrupted», a volte resta muto anche se dice «running»).
+ */
+let stale = false;
 const last = new Map<string, number>();
 
-function audio(): AudioContext | null {
-  if (muted) return null;
+type AC = typeof AudioContext;
+const AudioCtor = (): AC | undefined =>
+  window.AudioContext ?? (window as unknown as { webkitAudioContext?: AC }).webkitAudioContext;
+
+function create(): AudioContext | null {
+  const Ctor = AudioCtor();
+  if (!Ctor) return null;
+  if (ctx) void ctx.close().catch(() => {});
+  const c = new Ctor();
+  master = c.createGain();
+  master.gain.value = 0.5;
+  master.connect(c.destination);
+  noiseBuf = null;
+  c.addEventListener('statechange', () => {
+    if ((c.state as string) === 'interrupted') stale = true;
+  });
+  ctx = c;
+  stale = false;
+  return c;
+}
+
+/**
+ * Da chiamare dentro un gesto dell'utente (tocco, tasto): è l'unico momento in cui il browser
+ * lascia accendere o riaccendere l'audio.
+ */
+function unlock(): void {
+  if (muted) return;
   try {
-    if (!ctx) {
-      const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AC) return null;
-      ctx = new AC();
-      master = ctx.createGain();
-      master.gain.value = 0.5;
-      master.connect(ctx.destination);
-    }
-    if (ctx.state === 'suspended') void ctx.resume();
-    return ctx;
+    const c = !ctx || stale || ctx.state === 'closed' ? create() : ctx;
+    if (!c) return;
+    if (c.state !== 'running') void c.resume().catch(() => {});
+    // iOS: un suono vuoto durante il gesto sblocca davvero l'uscita
+    const src = c.createBufferSource();
+    src.buffer = c.createBuffer(1, 1, c.sampleRate);
+    src.connect(c.destination);
+    src.start();
   } catch {
-    return null;
+    /* audio non disponibile */
   }
+}
+
+/**
+ * Suona appena l'audio è pronto. Se il contesto si sta ancora riaccendendo aspetta un attimo;
+ * se non si riaccende in tempo il suono si salta (meglio niente che un suono in ritardo).
+ */
+function play(draw: (c: AudioContext, out: GainNode) => void): void {
+  if (muted) return;
+  const c = ctx && !stale && ctx.state !== 'closed' ? ctx : null;
+  if (!c || !master) return;
+  const out = master;
+  if (c.state === 'running') return draw(c, out);
+  const asked = performance.now();
+  c.resume()
+    .then(() => {
+      if (c === ctx && c.state === 'running' && performance.now() - asked < 400) draw(c, out);
+    })
+    .catch(() => {});
 }
 
 /** Evita che lo stesso suono si ripeta troppo fitto (es. trascinando tante X). */
@@ -47,46 +94,46 @@ interface ToneOpts {
 }
 
 function tone(freq: number, at: number, dur: number, o: ToneOpts = {}): void {
-  const c = audio();
-  if (!c || !master) return;
-  const t = c.currentTime + at;
-  const osc = c.createOscillator();
-  const g = c.createGain();
-  osc.type = o.type ?? 'sine';
-  osc.frequency.setValueAtTime(freq, t);
-  if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur);
-  const peak = o.gain ?? 0.25;
-  const attack = o.attack ?? 0.005;
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(peak, t + attack);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  osc.connect(g).connect(master);
-  osc.start(t);
-  osc.stop(t + dur + 0.02);
+  play((c, out) => {
+    const t = c.currentTime + at;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = o.type ?? 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur);
+    const peak = o.gain ?? 0.25;
+    const attack = o.attack ?? 0.005;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g).connect(out);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  });
 }
 
 /** Fruscio filtrato: il segno della matita. */
 function noise(at: number, dur: number, freq: number, gain: number): void {
-  const c = audio();
-  if (!c || !master) return;
-  if (!noiseBuf) {
-    noiseBuf = c.createBuffer(1, c.sampleRate * 0.5, c.sampleRate);
-    const d = noiseBuf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  }
-  const t = c.currentTime + at;
-  const src = c.createBufferSource();
-  src.buffer = noiseBuf;
-  const f = c.createBiquadFilter();
-  f.type = 'bandpass';
-  f.frequency.value = freq;
-  f.Q.value = 1.2;
-  const g = c.createGain();
-  g.gain.setValueAtTime(gain, t);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  src.connect(f).connect(g).connect(master);
-  src.start(t);
-  src.stop(t + dur + 0.02);
+  play((c, out) => {
+    if (!noiseBuf) {
+      noiseBuf = c.createBuffer(1, c.sampleRate * 0.5, c.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const t = c.currentTime + at;
+    const src = c.createBufferSource();
+    src.buffer = noiseBuf;
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = freq;
+    f.Q.value = 1.2;
+    const g = c.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(out);
+    src.start(t);
+    src.stop(t + dur + 0.02);
+  });
 }
 
 /** Note a scala (Do maggiore) per arpeggi e conteggio punti. */
@@ -185,21 +232,37 @@ export const sound = {
   setMuted(v: boolean) {
     muted = v;
     storage.set(MUTE_KEY, v ? '1' : null);
-    if (!v) sfx.tap();
+    if (!v) {
+      unlock();
+      sfx.tap();
+    }
   },
 };
 
 /**
- * Un suono a ogni tocco di bottone, per tutta l'app. I bottoni con un suono proprio
- * (Annulla, Aiuto…) hanno l'attributo `data-sfx` e qui si saltano.
+ * Da chiamare una volta all'avvio. Ogni gesto (tocco, tasto) accende o riaccende l'audio; tornando
+ * dal secondo piano il contesto si rifà al gesto successivo. Poi un suono a ogni tocco di bottone:
+ * quelli con un suono proprio (Annulla, Aiuto…) hanno l'attributo `data-sfx` e qui si saltano.
  */
 export function installButtonSounds(): void {
+  const gesture = () => unlock();
+  for (const type of ['touchend', 'click', 'keydown'] as const) document.addEventListener(type, gesture, { capture: true });
   document.addEventListener(
     'pointerdown',
     (e) => {
+      unlock();
       const b = (e.target as Element | null)?.closest?.('button');
       if (b && !b.disabled && !b.hasAttribute('data-sfx')) sfx.tap();
     },
     { capture: true },
   );
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      stale = true;
+      void ctx?.suspend().catch(() => {});
+    }
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) stale = true;
+  });
 }
