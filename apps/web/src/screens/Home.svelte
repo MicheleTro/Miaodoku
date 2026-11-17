@@ -5,6 +5,7 @@
   import Scene from '../components/Scene.svelte';
   import Sloth from '../components/Sloth.svelte';
   import Icon from '../components/Icon.svelte';
+  import Rules from '../components/Rules.svelte';
   import { LUMI_ENABLED } from '../lib/features.js';
   import { sound } from '../lib/sound.js';
 
@@ -13,6 +14,7 @@
   let path = $state<PathInfo | null>(null);
   let pathError = $state('');
   let muted = $state(sound.muted);
+  let showRules = $state(false);
   function toggleSound() {
     muted = !muted;
     sound.setMuted(muted);
@@ -47,14 +49,15 @@
 
 <main class="page">
   <header class="hud">
-    <button class="lvl" onclick={() => go('profile')} aria-label="{p.pathDone} livelli completati; {p.xpInto} su {p.xpNeed} XP. Apri il profilo">
+    <button class="lvl" onclick={() => go('profile')} aria-label="{p.pathDone} livelli completati. Apri il profilo">
       <span class="star" title="Livelli del Percorso completati"><svg viewBox="0 0 50 50"><path d="M25 3l6.5 13.5 14.5 2-10.5 10 2.6 14.5L25 36l-13.1 7 2.6-14.5L4 18.5l14.5-2z" fill="#ffc93c" stroke="#22301f" stroke-width="3.5" stroke-linejoin="round" /></svg><b class="num">{p.pathDone}</b></span>
-      <span class="xpbar" title="XP verso il prossimo rango"><i style="width:{(p.xpInto / p.xpNeed) * 100}%"></i></span>
+      <span class="lvl-label outline-text">{p.pathDone === 1 ? 'livello' : 'livelli'}</span>
     </button>
     <span class="pill" title="Serie di presenza"><span class="ic flame"><Icon name="flame" /></span><span class="num">{p.streak}</span></span>
     {#if LUMI_ENABLED}
       <span class="pill" title="Lumi: suggerimenti senza penalità"><span class="ic lume"><Icon name="lume" /></span><span class="num">{p.lumi}</span></span>
     {/if}
+    <button class="icon-btn" onclick={() => (showRules = true)} aria-label="Regole del gioco"><Icon name="info" /></button>
     <button class="icon-btn sound" data-sfx onclick={toggleSound} aria-pressed={!muted} aria-label={muted ? 'Accendi i suoni' : 'Spegni i suoni'}><Icon name={muted ? 'mute' : 'sound'} /></button>
   </header>
 
@@ -99,20 +102,24 @@
   </div>
 
   <footer class="rank">
-    <span class="outline-text">{p.rank}</span> · {p.xpInto}/{p.xpNeed} XP verso il grado {p.level + 1}
+    <div><span class="outline-text">{p.rank}</span> · grado {p.level}</div>
+    <div class="xpbar" title="XP verso il prossimo grado"><i style="width:{(p.xpInto / p.xpNeed) * 100}%"></i></div>
+    <div class="num xp">{p.xpInto}/{p.xpNeed} XP verso il grado {p.level + 1}</div>
     {#if LUMI_ENABLED}
       <button class="link" onclick={() => toast('Ogni 10 giorni di fila ricevi 2 Lumi: suggerimenti completi senza penalità.')}>Cos'è un Lume?</button>
     {/if}
   </footer>
 </main>
 
+{#if showRules}<Rules onclose={() => (showRules = false)} />{/if}
+
 <style>
   .hud { display: flex; align-items: center; gap: 8px; }
-  .lvl { display: flex; align-items: center; flex: 1; min-width: 0; background: none; border: 0; padding: 0; }
+  .lvl { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; background: none; border: 0; padding: 0; color: #fff; }
   .star { position: relative; width: 52px; height: 52px; flex: none; display: grid; place-items: center; z-index: 1; }
   .star svg { position: absolute; inset: 0; }
   .star b { position: relative; font-family: var(--f-display); font-size: 1.2rem; margin-top: 3px; }
-  .lvl .xpbar { flex: 1; max-width: 130px; margin-left: -12px; height: 18px; border-radius: 0 10px 10px 0; }
+  .lvl-label { font-family: var(--f-display); font-size: 1.05rem; }
   .ic { width: 24px; height: 24px; display: grid; place-items: center; }
   .ic :global(svg) { width: 20px; height: 20px; }
   .flame { color: var(--berry); }
@@ -137,7 +144,9 @@
   .qn { font-family: var(--f-display); font-size: 1.5rem; margin-right: auto; }
   .mini { width: 30px; height: 30px; display: inline-block; vertical-align: middle; animation: bob 0.8s ease-in-out infinite; }
   .link.dark { display: inline; color: inherit; }
-  .rank { color: #fff; text-align: center; font-weight: 800; font-size: 0.95rem; }
+  .rank { color: #fff; text-align: center; font-weight: 800; font-size: 0.95rem; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .rank .xpbar { width: min(100%, 260px); height: 14px; }
+  .rank .xp { font-size: 0.85rem; opacity: 0.9; }
   .rank .outline-text { font-family: var(--f-display); font-size: 1.1rem; }
   .link { display: block; margin: 4px auto 0; background: none; border: 0; color: var(--sun-l); text-decoration: underline; font-weight: 800; }
 </style>

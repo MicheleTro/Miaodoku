@@ -71,12 +71,9 @@
     <div class="row between"><span>{s.cleanMult > 1 ? 'Partita pulita' : 'Qualche bradipo fuori posto'}</span><b class="num">{x(s.cleanMult)}</b></div>
     <div class="row between"><span>{s.hintMult >= 1.5 ? 'Senza suggerimenti' : 'Suggerimenti usati'}</span><b class="num">{x(s.hintMult)}</b></div>
     <hr />
-    <div class="row">
-      <span class="lv num">{r.xp.levelAfter}</span>
-      <div class="grow">
-        <div class="xpbar"><i style="width:{barWidth}%"></i></div>
-        <span class="muted small num">{r.xp.xpInto}/{r.xp.xpNeed} XP · {r.xp.rank}</span>
-      </div>
+    <div class="xp">
+      <div class="row between"><b>Grado {r.xp.levelAfter} · {r.xp.rank}</b><span class="muted small num">{r.xp.xpInto}/{r.xp.xpNeed} XP</span></div>
+      <div class="xpbar"><i style="width:{barWidth}%"></i></div>
     </div>
     {#if levelUp}<p class="banner leaf">Grado {r.xp.levelAfter}! Sei salito di grado.</p>{/if}
     {#if r.path?.advanced}<p class="banner sun">Livello {r.path.k} completato · {r.path.done} nel Percorso</p>{/if}
@@ -134,7 +131,7 @@
   .pts b { font-family: var(--f-display); font-size: 3.4rem; line-height: 1; color: #fff; text-shadow: 0 4px 0 var(--ink), -3px 0 0 var(--ink), 3px 0 0 var(--ink), 0 -3px 0 var(--ink); }
   .pts span { font-family: var(--f-display); font-weight: 800; }
   hr { border: 0; border-top: 2px dashed var(--bark-l); width: 100%; margin: 0; }
-  .lv { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 3px solid var(--ink); background: var(--sun); font-family: var(--f-display); font-weight: 800; font-size: 1.2rem; }
+  .xp { display: flex; flex-direction: column; gap: 4px; }
   .small { font-size: 0.85rem; }
   .banner { display: flex; align-items: center; gap: 6px; background: var(--berry-l); border: 2.5px solid var(--ink); border-radius: 12px; padding: 6px 10px; font-weight: 800; }
   .banner :global(svg) { width: 18px; height: 18px; color: var(--berry); }

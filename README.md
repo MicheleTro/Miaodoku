@@ -89,7 +89,8 @@ Il container gira come utente `node`, senza privilegi.
   difficoltà e seme dipendono solo dal numero del livello (`packages/core/src/path.ts`); griglia e difficoltà si vedono
   prima di giocare, il seme resta interno.
   I primi 10 livelli salgono piano (8×8 facili → primo difficile al 10); poi ondate di 6–7 livelli misti e uno
-  difficile. Il 12×12 compare dal livello 46 (11×11 dal 26). La stella in alto conta i livelli completati.
+  difficile. Il 12×12 compare dal livello 46 (11×11 dal 26). La stella in alto conta i livelli completati;
+  è separata dalla barra degli XP (in fondo alla Home, con il grado). Il pulsante (i) in Home apre le regole.
   Ogni livello si genera una volta sola, in un worker thread, e si salva nella tabella `path_levels`; il successivo
   si prepara in anticipo.
 - **Etichetta «Difficile»**: solo per i livelli Esperto o Diabolico (Terne, Quaterne, Ipotesi); gli altri non hanno
