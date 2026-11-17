@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { ui, go, refreshProfile } from './lib/state.svelte.js';
   import { checkSession, watchPortalSession } from './lib/auth.svelte.js';
+  import { installButtonSounds } from './lib/sound.js';
   import Login from './screens/Login.svelte';
   import Home from './screens/Home.svelte';
   import Play from './screens/Play.svelte';
@@ -12,6 +13,7 @@
   import Sloth from './components/Sloth.svelte';
 
   onMount(async () => {
+    installButtonSounds();
     // Senza sessione checkSession rimanda al portale whoru; la schermata "login" resta solo se il
     // server non risponde o se il rimando non parte.
     if (!(await checkSession())) return go('login');

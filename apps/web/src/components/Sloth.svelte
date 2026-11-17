@@ -17,6 +17,18 @@
   const ink = '#22301f';
   const dark = '#4a3426';
   const top = $derived(shape.cy - shape.ry);
+
+  /**
+   * Fascia scura degli occhi (lato sinistro; il destro è lo specchio): parte stretta vicino al naso,
+   * si allarga sull'occhio e corre verso il lato della testa scendendo, assottigliandosi.
+   * Come nei bradipi veri, non un cerchio da panda.
+   */
+  const band = $derived.by(() => {
+    const y = shape.cy;
+    const tip = 50 - shape.rx + 6; // punta esterna, dentro il contorno della testa
+    return `M45 ${y - 1} C42 ${y - 7} 32 ${y - 8} 26 ${y - 3} C${tip + 4} ${y} ${tip + 1} ${y + 4} ${tip} ${y + 9}`
+      + ` C${tip + 6} ${y + 9} ${tip + 10} ${y + 6} 28 ${y + 5} C34 ${y + 6} 41 ${y + 5} 45 ${y - 1} Z`;
+  });
 </script>
 
 <svg class="sloth {cls}" viewBox="0 0 100 100" aria-hidden="true">
@@ -33,9 +45,9 @@
   <ellipse cx="50" cy={shape.cy} rx={shape.rx} ry={shape.ry} fill={fur} stroke={ink} stroke-width="4" />
   <!-- muso chiaro -->
   <ellipse cx="50" cy={shape.cy + 4} rx={shape.rx * 0.7} ry={shape.ry * 0.6} fill="#f3e3c8" />
-  <!-- macchie degli occhi -->
-  <ellipse cx="36" cy={shape.cy} rx="10" ry="6.5" transform="rotate(-22 36 {shape.cy})" fill={dark} />
-  <ellipse cx="64" cy={shape.cy} rx="10" ry="6.5" transform="rotate(22 64 {shape.cy})" fill={dark} />
+  <!-- fasce degli occhi -->
+  <path d={band} fill={dark} />
+  <path d={band} fill={dark} transform="translate(100 0) scale(-1 1)" />
   {#if mood === 'sleepy'}
     <path d="M31 {shape.cy} q5 4 10 0 M59 {shape.cy} q5 4 10 0" stroke="#fff6e5" stroke-width="2.6" fill="none" stroke-linecap="round" />
   {:else if mood === 'happy'}

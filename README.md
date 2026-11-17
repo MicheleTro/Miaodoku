@@ -1,7 +1,7 @@
 # Bradoku
 
 Puzzle logico: **un bradipo per riga, per colonna e per regione colorata; due bradipi non si toccano, nemmeno in diagonale.**
-Ogni quadro ha una sola soluzione, raggiungibile con la logica. Si gioca nel **Percorso** (quadri uguali per tutti) o in **sfida** con gli amici.
+Ogni livello ha una sola soluzione, raggiungibile con la logica. Si gioca nel **Percorso** (livelli uguali per tutti) o in **sfida** con gli amici.
 
 Monorepo pnpm con la stessa struttura del Paroliere:
 
@@ -85,20 +85,26 @@ Il container gira come utente `node`, senza privilegi.
 - **Comandi**: un tocco mette la X; doppio tocco mette il bradipo; un tocco (dopo una pausa) su una X la toglie,
   su un bradipo lo toglie. Trascinando dopo aver messo una X se ne mettono altre; trascinando dopo averne tolta una
   si tolgono a catena tutte quelle toccate. Niente X automatiche.
-- **Percorso** (al posto della partita libera): una sequenza di quadri uguale per tutti. Griglia (da 8×8 a 12×12),
-  difficoltà e seme dipendono solo dal numero del quadro (`packages/core/src/path.ts`) e si vedono prima di giocare.
-  I primi 10 quadri salgono piano (8×8 facili → primo difficile al 10); poi ondate di 6–7 quadri misti e uno
-  difficile. Il 12×12 compare dal quadro 46 (11×11 dal 26). La stella in alto conta i quadri completati.
-  Ogni quadro si genera una volta sola, in un worker thread, e si salva nella tabella `path_levels`; il successivo
+- **Percorso** (al posto della partita libera): una sequenza di livelli uguale per tutti. Griglia (da 8×8 a 12×12),
+  difficoltà e seme dipendono solo dal numero del livello (`packages/core/src/path.ts`); griglia e difficoltà si vedono
+  prima di giocare, il seme resta interno.
+  I primi 10 livelli salgono piano (8×8 facili → primo difficile al 10); poi ondate di 6–7 livelli misti e uno
+  difficile. Il 12×12 compare dal livello 46 (11×11 dal 26). La stella in alto conta i livelli completati;
+  è separata dalla barra degli XP (in fondo alla Home, con il grado). Il pulsante (i) in Home apre le regole.
+  Ogni livello si genera una volta sola, in un worker thread, e si salva nella tabella `path_levels`; il successivo
   si prepara in anticipo.
-- **Etichetta «Difficile»**: solo per i quadri Esperto o Diabolico (Terne, Quaterne, Ipotesi); gli altri non hanno
+- **Etichetta «Difficile»**: solo per i livelli Esperto o Diabolico (Terne, Quaterne, Ipotesi); gli altri non hanno
   etichetta. Vale anche nelle sfide, dove si sceglie griglia 8–12 e Normale/Difficile.
 - **Punteggio**: `Velocità V = round(D × T × R)`, `Punti = round((D + V) × (1 + 0,2·E) × A)` — D difficoltà
   dell'engine; T rapidità (0 al tempo di riferimento, 1 a metà; riferimento = 15 s per passo del risolutore);
-  R = 0,5, oppure 1 nei quadri difficili (la velocità conta doppio); E partita pulita; A suggerimenti
+  R = 0,5, oppure 1 nei livelli difficili (la velocità conta doppio); E partita pulita; A suggerimenti
   (×1,5 senza; −0,25 ciascuno, minimo ×0,4). Il server misura il tempo, rigenera il livello dal seme e verifica la soluzione.
 - **XP e gradi**: ogni punto è un XP (la «banca punti»); per salire dal grado n servono 60 × n^1,4 XP. Ranghi: Germoglio, Ramo, Chioma, Foresta.
 - **Serie di presenza**: una partita al giorno (ora di Roma); ogni 10 giorni di fila +2 **Lumi** (suggerimenti completi senza penalità, solo in partita libera).
+  I Lumi per ora sono **nascosti** nell'interfaccia (`LUMI_ENABLED` in `apps/web/src/lib/features.ts`): il server li conta comunque.
+- **Suoni**: un effetto per ogni azione (bottoni, X, bradipo, conflitto, aiuto, vittoria, conteggio dei punti, grado,
+  livello, medaglie, esito della sfida), sintetizzati con Web Audio in `apps/web/src/lib/sound.ts` (nessun file audio).
+  Si spengono dal pulsante con l'altoparlante in Home; la scelta resta nel browser.
 - **Aiuto a due passi**: prima la zona dove guardare, poi la spiegazione della tecnica. Gli errori si segnalano prima di tutto.
 - **Sfide** (aperte da subito): sullo stesso seme, ognuno quando vuole; vince il punteggio, poi meno suggerimenti, poi il tempo.
   Si può sfidare un amico sul livello appena risolto; rivincita con un tocco; bilancio con ogni amico. I Lumi non valgono.

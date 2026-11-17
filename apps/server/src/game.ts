@@ -61,7 +61,7 @@ export function pathLevelFor(db: DB, k: number): Promise<RatedLevel> {
 
 /** Prepara in anticipo il quadro k, così quando arriva il giocatore è già pronto. */
 export function prefetchPath(db: DB, k: number): void {
-  pathLevelFor(db, k).catch((e) => console.warn(`Quadro ${k} non preparato: ${(e as Error).message}`));
+  pathLevelFor(db, k).catch((e) => console.warn(`Livello ${k} non preparato: ${(e as Error).message}`));
 }
 
 export async function pathInfo(db: DB, u: User) {

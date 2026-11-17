@@ -44,11 +44,11 @@
 <Modal onclose={() => !busy && (ui.challengeFrom = null)} label="Nuova sfida">
   <form class="stack" onsubmit={send}>
     <div class="row">
-      <h2 class="grow">{from.gameId ? 'Sfida su questo quadro' : 'Nuova sfida'}</h2>
+      <h2 class="grow">{from.gameId ? 'Sfida su questo livello' : 'Nuova sfida'}</h2>
       <button type="button" class="icon-btn" onclick={() => (ui.challengeFrom = null)} aria-label="Chiudi"><Icon name="close" /></button>
     </div>
     <p class="muted">
-      {from.gameId ? 'Il tuo risultato è già registrato: il tuo amico giocherà lo stesso identico quadro.' : 'Giocate lo stesso quadro, ognuno quando vuole. Vince chi fa più punti.'}
+      {from.gameId ? 'Il tuo risultato è già registrato: il tuo amico giocherà lo stesso identico livello.' : 'Giocate lo stesso livello, ognuno quando vuole. Vince chi fa più punti.'}
     </p>
     <h3>Chi sfidi?</h3>
     {#if friends === null}

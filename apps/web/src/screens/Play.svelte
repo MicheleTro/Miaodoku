@@ -9,6 +9,8 @@
   import Board, { type DragMode } from '../components/Board.svelte';
   import Icon from '../components/Icon.svelte';
   import Sloth from '../components/Sloth.svelte';
+  import { LUMI_ENABLED } from '../lib/features.js';
+  import { sfx } from '../lib/sound.js';
 
   const g = ui.game!;
   const { n, regions } = g.level;
@@ -91,6 +93,8 @@
     if (finishing || solved) return null;
     if (double && !firstTapRemovedPiece) {
       setPiece(i);
+      sfx.sloth();
+      if (analysis.bad.has(i)) sfx.oops();
       changed();
       return null;
     }
@@ -98,19 +102,29 @@
     const old = marks[i];
     firstTapRemovedPiece = old === PIECE;
     marks[i] = old === UNKNOWN ? CROSS : UNKNOWN;
+    if (old === UNKNOWN) sfx.cross();
+    else if (old === CROSS) sfx.uncross();
+    else sfx.unsloth();
     changed();
     return old === UNKNOWN ? 'add' : old === CROSS ? 'remove' : null;
   }
   function ondrag(i: number, mode: 'add' | 'remove') {
     if (finishing || solved) return;
-    if (mode === 'add' && marks[i] === UNKNOWN) marks[i] = CROSS;
-    else if (mode === 'remove' && marks[i] === CROSS) marks[i] = UNKNOWN;
-    else return;
+    if (mode === 'add' && marks[i] === UNKNOWN) {
+      marks[i] = CROSS;
+      sfx.cross();
+    } else if (mode === 'remove' && marks[i] === CROSS) {
+      marks[i] = UNKNOWN;
+      sfx.uncross();
+    } else return;
     save();
   }
   function undo() {
     const prev = undoStack.pop();
-    if (prev) marks = prev;
+    if (prev) {
+      marks = prev;
+      sfx.undo();
+    }
     canUndo = undoStack.length > 0;
     hint = null;
     save();
@@ -118,6 +132,7 @@
   function reset() {
     if (!marks.some((m) => m)) return;
     pushUndo();
+    sfx.reset();
     marks = new Array(n * n).fill(UNKNOWN);
     hint = null;
     save();
@@ -142,11 +157,13 @@
     if (hint?.stage === 'zone' && hint.d) {
       const ex = explainDeduction(board, hint.d);
       hint = { stage: 'explain', title: ex.title, text: ex.text, d: hint.d };
+      sfx.hint();
       return;
     }
     const wrong = wrongCells();
     if (wrong.length) {
       hints++;
+      sfx.oops();
       hint = { stage: 'error', title: 'Qualcosa non torna', text: wrong.length === 1 ? 'La casella evidenziata è sbagliata.' : `Ci sono ${wrong.length} caselle sbagliate, evidenziate.`, cells: wrong };
       save();
       return;
@@ -155,12 +172,14 @@
     const obvious: number[] = [];
     st.forEach((v, i) => v === CROSS && marks[i] === UNKNOWN && obvious.push(i));
     if (obvious.length) {
+      sfx.hint();
       hint = { stage: 'obvious', title: 'Intorno ai bradipi', text: 'Ogni bradipo esclude la sua riga, la sua colonna, la sua regione e le 8 caselle intorno. Queste si possono segnare con una X (gratis).', cells: obvious };
       return;
     }
     const d = nextDeduction(board, st);
     if (!d) return;
     hints++;
+    sfx.hint();
     hint = { stage: 'zone', title: 'Dove guardare', text: hintZone(board, d), d };
     save();
   }
@@ -168,6 +187,7 @@
   function applyHint() {
     if (!hint) return;
     pushUndo();
+    sfx.apply();
     if (hint.stage === 'error') for (const i of hint.cells ?? []) marks[i] = UNKNOWN;
     else if (hint.stage === 'obvious') for (const i of hint.cells ?? []) marks[i] = CROSS;
     else if (hint.d) {
@@ -185,6 +205,7 @@
     for (const i of wrongCells()) marks[i] = UNKNOWN;
     const d = nextDeduction(board, logicState());
     lumiUsed = true;
+    sfx.apply();
     if (d) {
       const ex = explainDeduction(board, d);
       if (d.place !== undefined) setPiece(d.place);
@@ -217,6 +238,7 @@
     if (solved || analysis.pieces !== n || analysis.bad.size) return;
     solved = true;
     finishing = true;
+    sfx.win();
     const pieces = marks.flatMap((m, i) => (m === PIECE ? [i] : []));
     await new Promise((r) => setTimeout(r, 1300));
     try {
@@ -238,7 +260,7 @@
   <header class="top">
     <button class="icon-btn" onclick={() => go(isChallenge ? 'challenges' : 'home')} aria-label="Esci (la partita resta in sospeso)"><Icon name="back" /></button>
     <div class="grow title">
-      {#if g.pathK}<span class="chip">Quadro {g.pathK}</span>{/if}
+      {#if g.pathK}<span class="chip">Livello {g.pathK}</span>{/if}
       {#if g.level.rating.hard}<span class="chip hard">Difficile</span>{/if}
       <span class="outline-text size">{n}×{n}</span>
       {#if isChallenge}<span class="chip vs">Sfida</span>{/if}
@@ -246,9 +268,8 @@
     <span class="pill timer num" class:over={!underPar}>{fmt(elapsed)}</span>
   </header>
 
-  <div class="status row between">
+  <div class="status row">
     <span class="count outline-text num">{analysis.pieces}/{n} bradipi</span>
-    <span class="seed muted num">seme {g.level.seed}</span>
   </div>
 
   <div class="board-wrap">
@@ -262,8 +283,8 @@
         <div class="grow"><h3>{hint.title}</h3><p>{hint.text}</p></div>
       </div>
       <div class="row">
-        {#if hint.stage === 'zone'}<button class="btn btn-sm btn-sun" onclick={askHint}>Spiegami</button>{/if}
-        {#if hint.stage !== 'zone'}<button class="btn btn-sm btn-leaf" onclick={applyHint}>{hint.stage === 'error' ? 'Correggi' : 'Applica'}</button>{/if}
+        {#if hint.stage === 'zone'}<button class="btn btn-sm btn-sun" data-sfx onclick={askHint}>Spiegami</button>{/if}
+        {#if hint.stage !== 'zone'}<button class="btn btn-sm btn-leaf" data-sfx onclick={applyHint}>{hint.stage === 'error' ? 'Correggi' : 'Applica'}</button>{/if}
         <button class="btn btn-sm" onclick={() => (hint = null)}>Chiudi</button>
       </div>
     </section>
@@ -271,14 +292,14 @@
   {#if error}<p class="error" role="alert">{error}</p>{/if}
 
   <nav class="tools">
-    <button class="tool" onclick={undo} disabled={!canUndo || finishing}><Icon name="undo" /><span>Annulla</span></button>
-    <button class="tool sun" onclick={askHint} disabled={finishing}><Icon name="bulb" /><span>Aiuto{hints ? ` (${hints})` : ''}</span></button>
-    {#if !isChallenge}
-      <button class="tool lume" onclick={useLume} disabled={lumiUsed || g.lumiAvailable < 1 || finishing} title="Un suggerimento completo senza penalità">
+    <button class="tool" data-sfx onclick={undo} disabled={!canUndo || finishing}><Icon name="undo" /><span>Annulla</span></button>
+    <button class="tool sun" data-sfx onclick={askHint} disabled={finishing}><Icon name="bulb" /><span>Aiuto{hints ? ` (${hints})` : ''}</span></button>
+    {#if LUMI_ENABLED && !isChallenge}
+      <button class="tool lume" data-sfx onclick={useLume} disabled={lumiUsed || g.lumiAvailable < 1 || finishing} title="Un suggerimento completo senza penalità">
         <Icon name="lume" /><span>Lume {lumiUsed ? '✓' : g.lumiAvailable}</span>
       </button>
     {/if}
-    <button class="tool" onclick={reset} disabled={finishing}><Icon name="reset" /><span>Ricomincia</span></button>
+    <button class="tool" data-sfx onclick={reset} disabled={finishing}><Icon name="reset" /><span>Ricomincia</span></button>
   </nav>
   <p class="help">Tocco: X · doppio tocco: bradipo · tocca una X per toglierla. Trascina per mettere o togliere tante X.</p>
 </main>
@@ -292,7 +313,6 @@
   .timer { font-size: 1.3rem; padding: 2px 12px; }
   .timer.over { background: var(--paper-2); }
   .count { font-family: var(--f-display); font-size: 1.2rem; }
-  .seed { color: #fff; opacity: 0.8; font-size: 0.85rem; font-weight: 700; }
   .board-wrap { width: min(100%, calc(100dvh - 330px)); min-width: min(100%, 300px); margin: 0 auto; }
   .hint { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
   .hint h3 { font-size: 1.1rem; }
