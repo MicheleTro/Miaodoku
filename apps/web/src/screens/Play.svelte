@@ -359,8 +359,12 @@
   .timer { font-size: 1.3rem; padding: 2px 12px; }
   .timer.over { background: var(--paper-2); }
   .count { font-family: var(--f-display); font-size: 1.2rem; }
-  /* spazio verticale per tutto il resto (intestazione, testo, pulsanti e il margine di sicurezza) */
-  .board-wrap { width: min(100%, calc(100dvh - 380px)); min-width: min(100%, 300px); margin: 0 auto; }
+  /* la griglia occupa tutta la larghezza disponibile; i pulsanti restano in fondo (margin-top: auto) */
+  .board-wrap { width: 100%; margin: 0 auto; }
+  /* solo sugli schermi bassi (telefono in orizzontale) si riduce per lasciare spazio al resto */
+  @media (max-height: 560px) {
+    .board-wrap { width: min(100%, calc(100dvh - 200px)); min-width: min(100%, 260px); }
+  }
   .hint { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
   .hint h3 { font-size: 1.1rem; }
   .coach { width: 54px; height: 54px; flex: none; }
