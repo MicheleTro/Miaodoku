@@ -12,7 +12,7 @@ import {
 } from './auth.js';
 import { devPortal, httpPortal, missingPortal, PortalUnavailableError, type Portal } from './portal.js';
 import {
-  HttpError, getUser, profile, pathInfo, playPath, prefetchPath, resumeGame, finishGame, listChallenges, createChallenge, playChallenge,
+  HttpError, getUser, profile, pathInfo, playPath, prefetchPath, resumeGame, pauseGame, unpauseGame, finishGame, listChallenges, createChallenge, playChallenge,
   rematch, friends, getChallenge, challengeView, otherPlayer, rememberUser,
 } from './game.js';
 import { unlockedAccessories, levelFromXp, MIN_SIZE, MAX_SIZE } from '@bradoku/core';
@@ -153,6 +153,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // ---- partite
 
   app.get('/api/games/:id', async (req) => resumeGame(db, await getUser(db, await userId(req)), idParam(req)));
+  // Percorso: il tempo scorre solo mentre si è dentro il livello
+  app.post('/api/games/:id/pause', async (req) => pauseGame(db, await userId(req), idParam(req)));
+  app.post('/api/games/:id/resume', async (req) => unpauseGame(db, await userId(req), idParam(req)));
 
   app.post('/api/games/:id/finish', async (req) => {
     const body = z

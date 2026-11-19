@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import {
     createBoard, findSolutions, emptyState, placePiece, nextDeduction, explainDeduction, hintZone,
     UNKNOWN, CROSS, PIECE, type Deduction,
   } from '@bradoku/core';
-  import { api, storage, type FinishResult } from '../lib/api.js';
+  import { api, postKeepalive, storage, type FinishResult } from '../lib/api.js';
   import { ui, go, setCurrentGame, refreshProfile } from '../lib/state.svelte.js';
   import Board, { type DragMode } from '../components/Board.svelte';
   import Icon from '../components/Icon.svelte';
@@ -42,12 +42,58 @@
   let hint = $state<Hint | null>(null);
 
   // ---- tempo (misurato dal server; qui solo mostrato)
-  const offset = Date.now() - Date.parse(g.serverNow);
-  const started = Date.parse(g.startedAt);
+  // Nel Percorso il tempo scorre solo mentre si è dentro il livello: uscendo o mettendo l'app in secondo
+  // piano la partita va in pausa sul server, rientrando riparte. Nelle sfide scorre sempre.
+  const pausable = g.pathK !== null && !isChallenge;
+  let base = g.elapsedMs;
+  let since = $state<number | null>(Date.now());
   let now = $state(Date.now());
   const tick = setInterval(() => (now = Date.now()), 500);
-  onDestroy(() => clearInterval(tick));
-  const elapsed = $derived(Math.max(0, now - offset - started));
+  const elapsed = $derived(base + (since === null ? 0 : Math.max(0, now - since)));
+
+  async function syncTime(action: 'pause' | 'resume') {
+    try {
+      const res = await postKeepalive(`/games/${g.gameId}/${action}`);
+      if (!res.ok) return;
+      const t = (await res.json()) as { elapsedMs: number; paused: boolean };
+      if (action === 'resume' && since !== null) {
+        base = t.elapsedMs;
+        since = Date.now();
+        now = since;
+      }
+    } catch {
+      /* rete assente: il tempo mostrato resta quello locale */
+    }
+  }
+  function pause() {
+    if (!pausable || since === null || solved) return;
+    base = elapsed;
+    since = null;
+    void syncTime('pause');
+  }
+  function resume() {
+    if (!pausable || since !== null || solved) return;
+    since = Date.now();
+    now = since;
+    void syncTime('resume');
+  }
+  const onVisibility = () => (document.visibilityState === 'hidden' ? pause() : resume());
+  onMount(() => {
+    if (pausable) {
+      // si rientra nel livello: se era in pausa, il tempo riparte
+      void syncTime('resume');
+      document.addEventListener('visibilitychange', onVisibility);
+      window.addEventListener('pagehide', pause);
+    }
+  });
+  onDestroy(() => {
+    clearInterval(tick);
+    if (pausable) {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', pause);
+      if (!finishing) pause();
+    }
+  });
   const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
   const underPar = $derived(elapsed < g.level.parMs);
 
@@ -275,6 +321,7 @@
   <div class="board-wrap">
     <Board {n} {regions} {marks} conflicts={analysis.bad} emptyUnits={analysis.empty} {highlight} {accessory} disabled={finishing} celebrate={solved} {onpress} {ondrag} />
   </div>
+  <p class="help">Tocco: X · doppio tocco: bradipo · tocca una X per toglierla. Trascina per mettere o togliere tante X.</p>
 
   {#if hint}
     <section class="card hint rise" aria-live="polite">
@@ -301,7 +348,6 @@
     {/if}
     <button class="tool" data-sfx onclick={reset} disabled={finishing}><Icon name="reset" /><span>Ricomincia</span></button>
   </nav>
-  <p class="help">Tocco: X · doppio tocco: bradipo · tocca una X per toglierla. Trascina per mettere o togliere tante X.</p>
 </main>
 
 <style>
@@ -313,11 +359,13 @@
   .timer { font-size: 1.3rem; padding: 2px 12px; }
   .timer.over { background: var(--paper-2); }
   .count { font-family: var(--f-display); font-size: 1.2rem; }
-  .board-wrap { width: min(100%, calc(100dvh - 330px)); min-width: min(100%, 300px); margin: 0 auto; }
+  /* spazio verticale per tutto il resto (intestazione, testo, pulsanti e il margine di sicurezza) */
+  .board-wrap { width: min(100%, calc(100dvh - 380px)); min-width: min(100%, 300px); margin: 0 auto; }
   .hint { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
   .hint h3 { font-size: 1.1rem; }
   .coach { width: 54px; height: 54px; flex: none; }
-  .tools { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+  /* pulsanti in fondo allo schermo, lontani dalla griglia: niente tocchi per sbaglio */
+  .tools { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; margin-top: auto; padding-top: 32px; }
   .tool {
     display: flex; flex-direction: column; align-items: center; gap: 2px; border: 3px solid var(--ink); border-radius: 16px;
     background: var(--paper); box-shadow: 0 4px 0 var(--ink); padding: 6px 2px; font-weight: 800; font-size: 0.82rem;
@@ -326,5 +374,5 @@
   .tool:disabled { opacity: 0.5; }
   .tool.sun { background: var(--sun-l); }
   .tool.lume { background: #fff3cf; color: var(--bark); }
-  .help { color: #fff; text-align: center; font-size: 0.85rem; opacity: 0.85; }
+  .help { color: #fff; text-align: center; font-size: 0.85rem; opacity: 0.85; margin: 2px 0 0; }
 </style>

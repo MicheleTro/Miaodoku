@@ -152,11 +152,47 @@ export function publicLevel(lv: RatedLevel) {
   };
 }
 
+/** Tempo di gioco: dall'inizio, meno le pause (solo il Percorso si mette in pausa). */
+export function elapsedMs(g: Pick<Game, 'startedAt' | 'pausedAt' | 'pausedMs'>, now = new Date()): number {
+  const end = g.pausedAt ?? now;
+  return Math.max(0, end.getTime() - g.startedAt.getTime() - g.pausedMs);
+}
+
 function gamePayload(u: User, g: Game, lv: RatedLevel) {
   return {
     gameId: g.id, challengeId: g.challengeId, pathK: g.pathK, startedAt: g.startedAt.toISOString(), serverNow: new Date().toISOString(),
+    elapsedMs: elapsedMs(g), paused: g.pausedAt !== null,
     level: publicLevel(lv), lumiAvailable: g.challengeId ? 0 : u.lumi,
   };
+}
+
+async function ownPlayingGame(db: DB, userId: string, gameId: number): Promise<Game> {
+  const [g] = await db.select().from(games).where(and(eq(games.id, gameId), eq(games.userId, userId)));
+  if (!g) throw new HttpError(404, 'Partita non trovata');
+  if (g.status !== 'playing') throw new HttpError(409, 'Partita già conclusa');
+  return g;
+}
+
+/**
+ * Il giocatore esce dal livello (o l'app va in secondo piano): nel Percorso il tempo si ferma.
+ * Nelle sfide il tempo scorre comunque, per equità tra i due giocatori.
+ */
+export async function pauseGame(db: DB, userId: string, gameId: number) {
+  const g = await ownPlayingGame(db, userId, gameId);
+  if (g.pathK === null || g.pausedAt) return { elapsedMs: elapsedMs(g), paused: g.pausedAt !== null };
+  const now = new Date();
+  await db.update(games).set({ pausedAt: now }).where(eq(games.id, g.id));
+  return { elapsedMs: elapsedMs({ ...g, pausedAt: now }), paused: true };
+}
+
+/** Il giocatore rientra nel livello: il tempo riparte da dove si era fermato. */
+export async function unpauseGame(db: DB, userId: string, gameId: number) {
+  const g = await ownPlayingGame(db, userId, gameId);
+  if (!g.pausedAt) return { elapsedMs: elapsedMs(g), paused: false };
+  const now = new Date();
+  const pausedMs = g.pausedMs + Math.max(0, now.getTime() - g.pausedAt.getTime());
+  await db.update(games).set({ pausedAt: null, pausedMs }).where(eq(games.id, g.id));
+  return { elapsedMs: elapsedMs({ ...g, pausedAt: null, pausedMs }, now), paused: false };
 }
 
 async function startChallengeGame(db: DB, u: User, c: Challenge) {
@@ -190,7 +226,7 @@ export async function finishGame(db: DB, userId: string, gameId: number, input: 
   const lumiUsed = input.lumi && before.lumi > 0;
 
   const now = new Date();
-  const durationMs = Math.max(1000, now.getTime() - g.startedAt.getTime());
+  const durationMs = Math.max(1000, elapsedMs(g, now));
   const score = computePoints({ rating: lv.rating, durationMs, hints: input.hints, clean: input.clean, hard: isHard(lv.rating.category) });
   const pathAdvanced = g.pathK !== null && g.pathK === before.pathDone + 1;
   const pure = input.hints === 0 && !lumiUsed;
