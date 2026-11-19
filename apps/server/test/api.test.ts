@@ -164,6 +164,27 @@ describe('gioco', () => {
     expect((await call('GET', `/api/games/${id}`, carla)).status).toBe(404);
   });
 
+  it('percorso: fuori dal livello il tempo si ferma', async () => {
+    const start = await call('POST', '/api/path/play', carla);
+    const id = start.body.gameId;
+    expect(start.body.paused).toBe(false);
+    const t0 = Date.now();
+    const p = await call('POST', `/api/games/${id}/pause`, carla);
+    expect(p.body.paused).toBe(true);
+    await new Promise((r) => setTimeout(r, 1500));
+    // in pausa il tempo resta fermo
+    expect((await call('GET', `/api/games/${id}`, carla)).body.elapsedMs).toBe(p.body.elapsedMs);
+    const r = await call('POST', `/api/games/${id}/resume`, carla);
+    expect(r.body).toMatchObject({ paused: false });
+    expect(r.body.elapsedMs).toBeLessThan(p.body.elapsedMs + 200);
+    // la partita di carla non si mette in pausa da anna
+    expect((await call('POST', `/api/games/${id}/pause`, anna)).status).toBe(404);
+    const fin = await call('POST', `/api/games/${id}/finish`, carla, { pieces: solve(start.body.level), hints: 0, clean: true });
+    expect(fin.status).toBe(200);
+    expect(fin.body.score.durationMs).toBeLessThan(Date.now() - t0); // la pausa (1,5 s) non conta
+    expect((await call('POST', `/api/games/${id}/pause`, carla)).status).toBe(409);
+  });
+
   it('sfide solo tra amici del portale', async () => {
     expect((await call('POST', '/api/challenges', anna, { opponent: 'sub-carla', n: 8 })).status).toBe(403);
     expect((await call('POST', '/api/challenges', anna, { opponent: 'sub-anna', n: 8 })).status).toBe(400);
@@ -189,6 +210,8 @@ describe('gioco', () => {
     expect(play.body.level.regions).toEqual(start.body.level.regions);
     expect(play.body.lumiAvailable).toBe(0);
     expect((await call('POST', `/api/games/${play.body.gameId}/finish`, bruno, { pieces, hints: 0, lumi: true, clean: true })).status).toBe(400);
+    // nelle sfide il tempo non si ferma
+    expect((await call('POST', `/api/games/${play.body.gameId}/pause`, bruno)).body.paused).toBe(false);
     const fin = await call('POST', `/api/games/${play.body.gameId}/finish`, bruno, { pieces, hints: 5, clean: false });
     expect(fin.body.challenge).toMatchObject({ status: 'completed', outcome: 'loss' });
 

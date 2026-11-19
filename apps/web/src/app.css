@@ -26,6 +26,8 @@
   /* colori delle regioni */
   --r0: #f7b8c8; --r1: #f9cda2; --r2: #f4e08a; --r3: #bfe3a5; --r4: #a3e0cf;
   --r5: #a9d2f3; --r6: #c6bff2; --r7: #e6b8ea; --r8: #e3d2b4; --r9: #cdd2da;
+  /* 11×11 e 12×12: una regione in più per riga, servono 12 colori (MAX_SIZE) */
+  --r10: #f5a79a; --r11: #dcef94;
 }
 
 * { box-sizing: border-box; }

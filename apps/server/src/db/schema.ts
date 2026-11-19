@@ -65,6 +65,10 @@ export const games = pgTable('games', {
   points: integer('points'),
   /** numero del quadro del Percorso (null per le sfide) */
   pathK: integer('path_k'),
+  /** Percorso: da quando la partita è in pausa (null = il tempo scorre) */
+  pausedAt: timestamp('paused_at', { withTimezone: true }),
+  /** Percorso: millisecondi passati in pausa, esclusi dal tempo di gioco */
+  pausedMs: integer('paused_ms').notNull().default(0),
 });
 
 export type User = typeof users.$inferSelect;
@@ -124,6 +128,8 @@ CREATE TABLE IF NOT EXISTS games (
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS path_done integer NOT NULL DEFAULT 0;
 ALTER TABLE games ADD COLUMN IF NOT EXISTS path_k integer;
+ALTER TABLE games ADD COLUMN IF NOT EXISTS paused_at timestamptz;
+ALTER TABLE games ADD COLUMN IF NOT EXISTS paused_ms integer NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS path_levels (
   k integer PRIMARY KEY,
   n integer NOT NULL,

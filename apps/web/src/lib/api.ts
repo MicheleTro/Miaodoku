@@ -52,6 +52,14 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
   return data as T;
 }
 
+/**
+ * POST che sopravvive alla chiusura della pagina (keepalive): serve per mettere in pausa la partita
+ * quando si esce o l'app va in secondo piano. Nessun redirect al portale.
+ */
+export function postKeepalive(path: string): Promise<Response> {
+  return fetch(`${BASE}/api${path}`, { method: 'POST', credentials: BASE ? 'include' : 'same-origin', keepalive: true });
+}
+
 // ---- tipi delle risposte
 
 export interface Profile {
@@ -91,6 +99,9 @@ export interface GameStart {
   pathK: number | null;
   startedAt: string;
   serverNow: string;
+  /** tempo di gioco già trascorso (nel Percorso, pause escluse) */
+  elapsedMs: number;
+  paused: boolean;
   level: PublicLevel;
   lumiAvailable: number;
 }
