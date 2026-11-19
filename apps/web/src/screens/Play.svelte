@@ -359,8 +359,9 @@
   .timer { font-size: 1.3rem; padding: 2px 12px; }
   .timer.over { background: var(--paper-2); }
   .count { font-family: var(--f-display); font-size: 1.2rem; }
-  /* spazio verticale per tutto il resto (intestazione, testo, pulsanti e il margine di sicurezza) */
-  .board-wrap { width: min(100%, calc(100dvh - 380px)); min-width: min(100%, 300px); margin: 0 auto; }
+  /* la griglia occupa tutta la larghezza disponibile; si riduce solo se in altezza non ci starebbe il resto
+     (intestazione, testo e pulsanti in fondo: circa 290 px, misurati su 375-430 px di larghezza) */
+  .board-wrap { width: min(100%, max(calc(100dvh - 290px), 280px)); margin: 0 auto; }
   .hint { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
   .hint h3 { font-size: 1.1rem; }
   .coach { width: 54px; height: 54px; flex: none; }
